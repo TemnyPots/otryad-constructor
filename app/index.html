@@ -622,7 +622,7 @@ function renderSquads(){
       <label class="field"><span>Порядок отрядов</span><select id="setOrder"><option value="old" ${state.order==="old"?"selected":""}>1-й отряд — самые старшие</option><option value="young" ${state.order==="young"?"selected":""}>1-й отряд — самые младшие</option></select></label>
     </div></div>
     <div class="panel"><div class="row" style="justify-content:space-between"><h2>Отряды и комнаты</h2>
-      <div class="row"><button class="btn sm" data-act="sqAdd">Добавить отряд</button><button class="btn sm" data-act="preset10">Шаблон: 10 отрядов (4 смена)</button></div></div>
+      <div class="row"><button class="btn sm" data-act="sqAdd">Добавить отряд</button><button class="btn sm" data-act="preset10">Шаблон: 10 отрядов</button></div></div>
       <p class="help">Мальчики и девочки живут в разных комнатах: конструктор сам решает, какие комнаты мальчиковые. «Оставить свободных» — сколько кроватей в отряде не занимать.</p>
       <div>${rows||'<p class="muted">Отрядов пока нет. Добавьте отряд или возьмите шаблон.</p>'}</div>
       <div class="row num"><b>Итого:</b> кроватей ${bedsAll}, займём ${capAll}, детей в списке ${kidsN} ${kidsN>capAll?`<span class="pill" style="background:var(--bad-soft);color:var(--bad)">не хватает ${kidsN-capAll} мест</span>`: kidsN<capAll?`<span class="pill">свободно ${capAll-kidsN}</span>`:`<span class="pill" style="background:var(--accent-soft)">мест ровно</span>`}</div>
@@ -784,7 +784,7 @@ document.addEventListener("click",e=>{
     s.rooms.splice(j,1); save(); render(); toast(moved?`Комната удалена. ${moved} чел. перенесены в «Без комнаты» этого отряда`:"Комната удалена"); return; }
   if(a==="fPlus"||a==="fMinus"){ const s=state.squads[+el.dataset.sq]; s.free=Math.max(0,(s.free||0)+(a==="fPlus"?1:-1)); save(); render(); return; }
   if(a==="sqAdd"){ state.squads.push({id:uid(),name:`${state.squads.length+1} отряд`,rooms:[5,5,5,5].map(size=>({size})),free:0}); save(); render(); return; }
-  if(a==="preset10"){ showModal(`<h2>Поставить шаблон 10 отрядов?</h2><p class="help">Отряды 101–110 с комнатами как в 4-й смене. Текущие отряды заменятся, распределение сбросится.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn primary" data-act="preset10Yes">Поставить</button></div>`); return; }
+  if(a==="preset10"){ showModal(`<h2>Поставить шаблон 10 отрядов?</h2><p class="help">Отряды 101–110 с готовыми комнатами. Текущие отряды заменятся, распределение сбросится.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn primary" data-act="preset10Yes">Поставить</button></div>`); return; }
   if(a==="preset10Yes"){ preset10(); save(); closeModal(); render(); return; }
   if(a==="sqDel"){ const i=+el.dataset.i; state.squads.splice(i,1); state.kids.forEach(k=>{ if(k.squad===i){k.squad=null;k.room=null;k.locked=false;} else if(k.squad!==null&&k.squad>i) k.squad--; }); save(); render(); return; }
   if(a==="sqUp"||a==="sqDown"){ const i=+el.dataset.i, j=a==="sqUp"?i-1:i+1; if(j<0||j>=state.squads.length) return; [state.squads[i],state.squads[j]]=[state.squads[j],state.squads[i]]; state.kids.forEach(k=>{ if(k.squad===i) k.squad=j; else if(k.squad===j) k.squad=i; }); save(); render(); return; }
