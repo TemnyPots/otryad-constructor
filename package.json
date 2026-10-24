@@ -1,7 +1,7 @@
 {
   "name": "otryad-constructor",
   "productName": "Отрядный конструктор",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Распределение детей по отрядам и комнатам лагеря: загрузка списков из Excel, автораспределение по возрасту, полу и пожеланиям, выгрузка в Excel.",
   "main": "main.js",
   "license": "UNLICENSED",
