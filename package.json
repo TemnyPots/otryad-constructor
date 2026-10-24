@@ -1,13 +1,14 @@
 {
   "name": "otryad-constructor",
   "productName": "Отрядный конструктор",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Распределение детей по отрядам и комнатам лагеря: загрузка списков из Excel, автораспределение по возрасту, полу и пожеланиям, выгрузка в Excel.",
   "main": "main.js",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --publish never"
+    "dist": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
   },
   "dependencies": {
     "xlsx-js-style": "1.2.0"
@@ -19,14 +20,20 @@
   "build": {
     "appId": "ru.otryad.constructor",
     "productName": "Отрядный конструктор",
+    "copyright": "© 2026 TemnyPots",
+    "directories": {
+      "buildResources": "build"
+    },
     "files": [
       "main.js",
       "preload.js",
       "app/**/*",
+      "build/icon.png",
       "node_modules/xlsx-js-style/dist/xlsx.bundle.js",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.png",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "portable", "arch": ["x64"] }
@@ -34,11 +41,35 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Отрядный конструктор",
+      "uninstallDisplayName": "Отрядный конструктор",
+      "installerLanguages": ["ru_RU"],
+      "language": "1049",
+      "runAfterFinish": true,
       "artifactName": "Otryad-Constructor-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "Otryad-Constructor-${version}-portable.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "Otryad-Constructor-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "title": "Отрядный конструктор ${version}"
     }
   }
 }

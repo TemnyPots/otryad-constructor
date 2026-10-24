@@ -15,6 +15,7 @@ function createWindow() {
     minWidth: 420,
     title: "Отрядный конструктор",
     backgroundColor: "#EEF2EE",
+    icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -43,11 +44,27 @@ ipcMain.handle("save-file", async (event, { filename, data }) => {
   return { status: "saved", path: filePath };
 });
 
+const isMac = process.platform === "darwin";
 Menu.setApplicationMenu(
   Menu.buildFromTemplate([
+    // macOS takes the first menu as the app menu
+    ...(isMac ? [{ role: "appMenu", label: app.name }] : []),
     {
       label: "Файл",
-      submenu: [{ role: "reload", label: "Обновить окно" }, { type: "separator" }, { role: "quit", label: "Выход" }],
+      submenu: [{ role: "reload", label: "Обновить окно" }, ...(isMac ? [] : [{ type: "separator" }, { role: "quit", label: "Выход" }])],
+    },
+    {
+      // without these roles Cmd+C / Cmd+V do nothing in text fields on macOS
+      label: "Правка",
+      submenu: [
+        { role: "undo", label: "Отменить" },
+        { role: "redo", label: "Повторить" },
+        { type: "separator" },
+        { role: "cut", label: "Вырезать" },
+        { role: "copy", label: "Копировать" },
+        { role: "paste", label: "Вставить" },
+        { role: "selectAll", label: "Выделить всё" },
+      ],
     },
     {
       label: "Вид",
