@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:">
+</head>
+<body>
+<title>Отрядный конструктор</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@500;700&display=swap">
+<script src="../node_modules/xlsx-js-style/dist/xlsx.bundle.js"></script>
+<style>
+/* Layout: sticky toolbar + tabs; work area below. Board = squad cards in a wrapping grid, rooms as bunk-blocks with child chips. */
+:root{
+  --bg:#EEF2EE; --surface:#FFFFFF; --sunk:#E3EAE4; --ink:#1B2620; --muted:#5D6C64; --line:#CFD9D2;
+  --accent:#2C6A4C; --accent-ink:#FFFFFF; --accent-soft:#D7E9DE;
+  --boy:#2F64B0; --boy-soft:#DCE7F7; --girl:#B53D6F; --girl-soft:#F6DDE8; --unk:#7B6A3A; --unk-soft:#EFE7CF;
+  --warn:#9A6312; --warn-soft:#FBEBCB; --bad:#AE3434; --bad-soft:#F8DCDC;
+  --display:"Unbounded", "Golos Text", system-ui, sans-serif;
+  --body:"Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111713; --surface:#18211C; --sunk:#202B24; --ink:#E4ECE6; --muted:#9BAAA1; --line:#2E3B33;
+  --accent:#74C298; --accent-ink:#0E1A13; --accent-soft:#1F3A2B;
+  --boy:#86AEEA; --boy-soft:#1E2C42; --girl:#EE93B8; --girl-soft:#40202E; --unk:#D8C27F; --unk-soft:#3A3320;
+  --warn:#E5B35A; --warn-soft:#3B2E14; --bad:#F08A8A; --bad-soft:#3E1C1C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111713; --surface:#18211C; --sunk:#202B24; --ink:#E4ECE6; --muted:#9BAAA1; --line:#2E3B33;
+  --accent:#74C298; --accent-ink:#0E1A13; --accent-soft:#1F3A2B;
+  --boy:#86AEEA; --boy-soft:#1E2C42; --girl:#EE93B8; --girl-soft:#40202E; --unk:#D8C27F; --unk-soft:#3A3320;
+  --warn:#E5B35A; --warn-soft:#3B2E14; --bad:#F08A8A; --bad-soft:#3E1C1C; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 0;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand h1{font-size:20px;letter-spacing:-.01em}
+.brand .tag{font-size:12px;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:4px 9px;font-size:13px}
+nav.tabs{display:flex;gap:2px;margin-top:12px;overflow-x:auto}
+nav.tabs button{border:0;background:transparent;padding:9px 14px;border-bottom:3px solid transparent;color:var(--muted);font-weight:500;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+nav.tabs .count{font-size:12px;background:var(--sunk);border-radius:20px;padding:1px 7px;margin-left:4px}
+
+main{padding-top:16px;display:grid;gap:16px}
+.banner{background:var(--warn-soft);color:var(--ink);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.banner b{color:var(--warn)}
+.status{border-radius:var(--r);padding:10px 14px;background:var(--accent-soft);display:grid;gap:4px}
+.status.bad{background:var(--bad-soft)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:12px;min-width:0}
+.panel h2{font-size:15px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.field{display:grid;gap:4px;font-size:13px}
+.field span{color:var(--muted);font-size:12px}
+input[type=text],input[type=date],input[type=number],input[type=search],select,textarea{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:6px 8px;min-width:0}
+textarea{resize:vertical;min-height:60px}
+
+/* summary strip */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.stat .v{font-family:var(--display);font-size:20px}
+.stat .l{font-size:12px;color:var(--muted)}
+.stat.bad .v{color:var(--bad)} .stat.ok .v{color:var(--accent)}
+
+/* issues */
+.issues{display:grid;gap:6px}
+.issue{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:6px 10px;border-radius:7px;background:var(--warn-soft)}
+.issue.bad{background:var(--bad-soft)}
+.issue .k{font-weight:600;white-space:nowrap}
+
+/* board */
+.pool{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r);padding:12px;display:grid;gap:8px}
+.pool.drop{border-color:var(--accent);background:var(--accent-soft)}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;align-items:start}
+.squad{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:grid;min-width:0}
+.squad.over{border-color:var(--bad)}
+.squad-h{padding:12px 14px;border-bottom:1px solid var(--line);display:grid;gap:4px}
+.squad-h .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.squad-h h3{font-size:15px}
+.squad-h .fill{font-family:var(--display);font-size:14px}
+.meter{height:6px;background:var(--sunk);border-radius:6px;overflow:hidden;display:flex}
+.meter i{display:block;height:100%}
+.meter .b{background:var(--boy)} .meter .g{background:var(--girl)} .meter .u{background:var(--unk)}
+.squad-h .sub{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+.rooms{display:grid;gap:8px;padding:10px}
+.room{border:1px solid var(--line);border-radius:8px;padding:8px;display:grid;gap:6px;background:var(--bg)}
+.room.drop{outline:2px solid var(--accent)}
+.room.bad{border-color:var(--bad);background:var(--bad-soft)}
+.room-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);gap:6px}
+.rctl{display:inline-flex;align-items:center;gap:3px}
+.ib{width:22px;height:22px;padding:0;border:1px solid var(--line);background:var(--surface);border-radius:6px;line-height:1;font-size:14px;display:inline-grid;place-items:center;color:var(--ink)}
+.ib:hover{border-color:var(--accent)}
+.ib.del{color:var(--bad);margin-left:3px}
+.add-room{border:1px dashed var(--line);background:transparent;border-radius:8px;padding:7px;color:var(--muted);font-size:13px}
+.add-room:hover{border-color:var(--accent);color:var(--ink)}
+.free-ctl{display:inline-flex;align-items:center;gap:4px}
+.room-h b{color:var(--ink);font-weight:600}
+.room-h .sx-М{color:var(--boy)} .room-h .sx-Ж{color:var(--girl)}
+.beds{display:flex;flex-wrap:wrap;gap:5px}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:6px;padding:3px 7px;font-size:12.5px;border:1px solid transparent;background:var(--sunk);cursor:grab;max-width:100%;user-select:none}
+.chip:hover{border-color:var(--accent)}
+.chip.М{background:var(--boy-soft)} .chip.Ж{background:var(--girl-soft)} .chip.U{background:var(--unk-soft)}
+.chip .d{width:7px;height:7px;border-radius:50%;flex:none;background:var(--unk)}
+.chip.М .d{background:var(--boy)} .chip.Ж .d{background:var(--girl)}
+.chip .a{color:var(--muted);font-size:11px}
+.chip .w{color:var(--warn);font-weight:700}
+.chip .lk{font-size:10px;color:var(--muted)}
+.chip.sel{outline:2px solid var(--accent)}
+.bed-empty{width:28px;height:22px;border:1px dashed var(--line);border-radius:6px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;gap:5px;align-items:center}
+.legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--sunk);font-weight:600;font-size:12px;white-space:nowrap}
+td input,td select{width:100%}
+td.c{text-align:center}
+tr.ph td{background:var(--unk-soft)}
+.fio-cell{min-width:220px} .cmt-cell{min-width:240px;font-size:12px}
+.pill{display:inline-block;border-radius:20px;padding:1px 8px;font-size:12px;background:var(--sunk);white-space:nowrap}
+.pill.М{background:var(--boy-soft);color:var(--boy)} .pill.Ж{background:var(--girl-soft);color:var(--girl)}
+
+/* squads config */
+.sq-row{display:grid;grid-template-columns:28px minmax(120px,1.2fr) minmax(140px,1.6fr) 90px 110px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.sq-row:last-child{border-bottom:0}
+.sq-row .n{font-family:var(--display);color:var(--muted)}
+@media (max-width:720px){.sq-row{grid-template-columns:28px 1fr 1fr;}.sq-row .cap{grid-column:2/4}}
+
+/* wishes */
+.wish{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.wish .type{font-weight:600;font-size:12px;white-space:nowrap}
+.wish .ok{color:var(--accent)} .wish .no{color:var(--bad)}
+.wish .src{flex-basis:100%;font-size:12px;color:var(--muted)}
+
+/* modal + drawer */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20;display:flex;justify-content:flex-end}
+.drawer{background:var(--surface);width:min(440px,100%);height:100%;overflow:auto;padding:18px max(18px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) 18px;display:grid;gap:12px;align-content:start}
+.modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:21;display:grid;place-items:center;padding:16px}
+.modal{background:var(--surface);border-radius:12px;width:min(640px,100%);max-height:90vh;overflow:auto;padding:18px;display:grid;gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.grid2{grid-template-columns:1fr}}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:9px;z-index:30;max-width:calc(100% - 32px)}
+.help{font-size:13px;color:var(--muted);max-width:75ch}
+.kbd{font-family:var(--display);font-size:11px;background:var(--sunk);padding:1px 6px;border-radius:5px}
+@media (prefers-reduced-motion:no-preference){.chip,.btn{transition:border-color .15s}}
+</style>
+
+<header class="top">
+  <div class="brand">
+    <h1>Отрядный конструктор</h1>
+    <span class="tag" id="projTag"></span>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="btnImport">Загрузить Excel</button>
+    <button class="btn" id="btnAuto">Распределить автоматически</button>
+    <button class="btn" id="btnExport">Скачать Excel</button>
+    <button class="btn ghost" id="btnSave">Сохранить проект</button>
+    <button class="btn ghost" id="btnOpen">Открыть проект</button>
+    <input type="file" id="fileXlsx" accept=".xlsx,.xls,.csv,.html,.htm" multiple hidden>
+    <input type="file" id="fileJson" accept=".json" hidden>
+  </div>
+  <nav class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-tab="board" aria-selected="true">Распределение</button>
+    <button role="tab" data-tab="kids">Дети <span class="count" id="cKids">0</span></button>
+    <button role="tab" data-tab="squads">Отряды и комнаты <span class="count" id="cSquads">0</span></button>
+    <button role="tab" data-tab="wishes">Пожелания <span class="count" id="cWishes">0</span></button>
+    <button role="tab" data-tab="help">Как пользоваться</button>
+  </nav>
+</header>
+
+<main id="main"></main>
+<div id="layer"></div>
+
+<script>
+"use strict";
+/* ============ state ============ */
+const LS_KEY = "otryad-constructor-v1";
+let state = null;
+let tab = "board";
+let selectedKid = null;
+let lastReport = null;
+let kidFilter = "";
+const DEFAULT_COLW = [34,290,110,289,146,300,99,316,137,170];
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function emptyState(){ return {name:"Новая смена", refDate: todayIso(), order:"old", kids:[], squads:[], wishes:[], dismissed:[], example:false}; }
+function todayIso(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
+function load(){ try{ const s=localStorage.getItem(LS_KEY); if(s){ const o=JSON.parse(s); if(o && Array.isArray(o.kids)) return o; } }catch(e){} return null; }
+
+/* ============ helpers ============ */
+const norm = s => String(s??"").toLowerCase().replace(/ё/g,"е").replace(/\s+/g," ").trim();
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sum = a => a.reduce((x,y)=>x+y,0);
+function pad(n){ return String(n).padStart(2,"0"); }
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return "";
+  // shift by 12h so both UTC-midnight and local-midnight dates land on the right calendar day
+  if(v instanceof Date && !isNaN(v)) { const d=new Date(v.getTime()+43200000); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  if(typeof v==="number" && v>1000 && v<80000){ const d=new Date(Math.round((v-25569)*86400000)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`; }
+  const s=String(v).trim();
+  let m=s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
+  if(m){ let y=+m[3]; if(y<100) y+= y>40?1900:2000; return `${y}-${pad(m[2])}-${pad(m[1])}`; }
+  m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  return "";
+}
+function fmtDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function ageOf(iso){ if(!iso) return null; const r=new Date(state.refDate||todayIso()); const d=new Date(iso); let a=r.getFullYear()-d.getFullYear(); const mm=r.getMonth()-d.getMonth(); if(mm<0||(mm===0&&r.getDate()<d.getDate())) a--; return a; }
+function guessSex(fio){ const p=norm(fio).split(" "); const pat=p[p.length-1]||""; if(p.length<3) return ""; if(/(ич|оглы|улы)$/.test(pat)) return "М"; if(/(на|кызы|гызы)$/.test(pat)) return "Ж"; return ""; }
+function surname(k){ return norm(k.fio).split(" ")[0]||""; }
+function shortName(k){ if(k.placeholder) return k.fio||"Место"; const p=String(k.fio).trim().split(/\s+/); return p.length>1? `${p[0]} ${p[1]}` : p[0]; }
+function roomsOf(sq){ return sq.rooms.map(r=>r.size); }
+function capOf(sq){ return sum(roomsOf(sq)) - (sq.free||0); }
+function kidById(id){ return state.kids.find(k=>k.id===id); }
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3200); }
+
+/* ============ example data ============ */
+function exampleState(){
+  const boys=["Артём Сергеевич","Иван Петрович","Максим Андреевич","Лев Ильич","Тимофей Олегович","Марк Денисович","Егор Павлович","Михаил Юрьевич","Даниил Игоревич","Савва Романович","Фёдор Алексеевич","Платон Викторович"];
+  const girls=["Анна Сергеевна","Мария Петровна","Ева Андреевна","Алиса Ильинична","София Олеговна","Варвара Денисовна","Полина Павловна","Вера Юрьевна","Ксения Игоревна","Злата Романовна","Таисия Алексеевна","Милана Викторовна"];
+  const sur=["Соколов","Орлов","Лебедев","Морозов","Волков","Зайцев","Белов","Комаров","Голубев","Сорокин","Ершов","Карпов","Мельников","Тихонов","Фомин","Гусев"];
+  let seed=7; const rnd=()=>{ seed=(seed*9301+49297)%233280; return seed/233280; };
+  const kids=[];
+  for(let i=0;i<46;i++){
+    const boy = rnd()<0.45; const s=sur[Math.floor(rnd()*sur.length)];
+    const n=(boy?boys:girls)[Math.floor(rnd()*12)];
+    const fio = (boy? s : s+"а")+" "+n;
+    const y=2011+Math.floor(rnd()*8), m=1+Math.floor(rnd()*12), d=1+Math.floor(rnd()*27);
+    kids.push(mkKid({fio, dob:`${y}-${pad(m)}-${pad(d)}`, parent:"Пример Родитель", phone:"+7 900 000-00-"+pad(i), district:["Центральный","Калининский","Выборгский"][i%3], source:"Пример"}));
+  }
+  kids[3].comment="в одну комнату с "+kids[5].fio.split(" ").slice(0,2).join(" ");
+  kids.push(mkKid({fio:"бронь", placeholder:true, district:"Кронштадт", source:"Пример"}));
+  const st={name:"Пример смены", refDate:todayIso(), order:"old", kids, wishes:[], dismissed:[], example:true,
+    squads:[ {id:uid(),name:"1 отряд",rooms:[6,6,5].map(size=>({size})),free:1},
+             {id:uid(),name:"2 отряд",rooms:[5,5,5,4].map(size=>({size})),free:1},
+             {id:uid(),name:"3 отряд",rooms:[6,6,6].map(size=>({size})),free:0} ]};
+  return st;
+}
+function mkKid(o){ const k=Object.assign({id:uid(),fio:"",sex:"",dob:"",parent:"",phone:"",address:"",district:"",comment:"",category:"",source:"",placeholder:false,squad:null,room:null,locked:false},o); if(!k.sex && !k.placeholder) k.sex=guessSex(k.fio); return k; }
+
+/* ============ import ============ */
+const COLS = [
+  ["fio",     h=>/фио/.test(h) && !/родит|законн|мам|пап/.test(h) || /^ребен|^ребён|^имя ребен/.test(h)],
+  ["dob",     h=>/рожд/.test(h)],
+  ["parent",  h=>/родит|законн/.test(h)],
+  ["phone",   h=>/телеф/.test(h)],
+  ["address", h=>/адрес/.test(h)],
+  ["district",h=>/район|лагер|откуда/.test(h)],
+  ["category",h=>/категор/.test(h)],
+  ["sex",     h=>/^пол$/.test(h)],
+];
+function parseSheet(ws, source){
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1, raw:true, defval:""});
+  let hi=-1;
+  for(let i=0;i<Math.min(rows.length,15);i++){ if(rows[i].some(c=>/фио/.test(norm(c)))){ hi=i; break; } }
+  if(hi<0) return {error:`На листе «${source}» нет строки с заголовком «ФИО»`, kids:[]};
+  const head = rows[hi].map(norm); const map={}; const cmt=[];
+  head.forEach((h,i)=>{ if(!h) return; if(/коммент/.test(h)) { cmt.push(i); return; } for(const [key,test] of COLS){ if(map[key]===undefined && test(h)){ map[key]=i; break; } } });
+  if(map.fio===undefined) return {error:`На листе «${source}» не нашёл столбец ФИО ребёнка`, kids:[]};
+  const kids=[];
+  for(const r of rows.slice(hi+1)){
+    const get=k=> map[k]===undefined? "" : String(r[map[k]]??"").replace(/\s+/g," ").trim();
+    const fio=get("fio"); const district=get("district");
+    const comment = cmt.map(i=>String(r[i]??"").replace(/\s+/g," ").trim()).filter(Boolean).join(" // ");
+    const rowHasNumber = /^\d+$/.test(String(r[0]??"").trim());
+    if(!fio){ if(rowHasNumber && district){ kids.push(mkKid({fio:"Пустая путёвка",placeholder:true,district,comment,source})); } continue; }
+    const isRes = /^(бронь|резерв|пустая путевка|пустая путёвка)$/i.test(fio);
+    let sex = get("sex").toUpperCase().startsWith("М")?"М": get("sex").toUpperCase().startsWith("Ж")?"Ж":"";
+    const dobRaw = map.dob===undefined? "" : r[map.dob];
+    kids.push(mkKid({fio: isRes? (fio.toLowerCase()==="бронь"?"Бронь":fio) : fio, sex, placeholder:isRes, dob:isRes?"":parseDate(dobRaw), parent:get("parent"), phone:get("phone"), address:get("address"), district, category:get("category"), comment, source}));
+  }
+  return {kids, map};
+}
+// Site exports often save an HTML table with an .xls name (sometimes with leading whitespace): read those as HTML text.
+function readWorkbook(buf){
+  const head=new Uint8Array(buf.slice(0,4096));
+  const isZipOrOle=(head[0]===0x50&&head[1]===0x4B)||(head[0]===0xD0&&head[1]===0xCF);
+  if(!isZipOrOle){
+    let text=new TextDecoder("utf-8").decode(buf);
+    if(text.split(String.fromCharCode(65533)).length>21) text=new TextDecoder("windows-1251").decode(buf);
+    if(/<table|<html/i.test(text.slice(0,4096))) return XLSX.read(text.trim(),{type:"string",raw:true}); // raw: keep "01.06.2014" as text, otherwise it is read as January 6
+  }
+  return XLSX.read(buf,{type:"array",cellDates:true});
+}
+let pendingBooks=[];
+async function handleXlsxFiles(files){
+  pendingBooks=[];
+  for(const f of files){
+    try{
+      const buf=await f.arrayBuffer();
+      const wb=readWorkbook(buf);
+      pendingBooks.push({file:f.name, wb});
+    }catch(e){ toast(`Не удалось прочитать «${f.name}»: ${e.message||e}`); }
+  }
+  if(pendingBooks.length) openImportDialog();
+}
+function openImportDialog(){
+  const rowsHtml = pendingBooks.map((b,bi)=>{
+    const sheets=b.wb.SheetNames.map((sn,si)=>{
+      const ws=b.wb.Sheets[sn]; const r=ws["!ref"]? XLSX.utils.decode_range(ws["!ref"]).e.r : 0;
+      return `<label class="row" style="gap:6px"><input type="checkbox" data-b="${bi}" data-s="${si}" ${si===0?"checked":""}> ${esc(sn)} <span class="muted num">· до ${r} строк</span></label>`;
+    }).join("");
+    return `<div class="panel" style="padding:12px"><b>${esc(b.file)}</b><div style="display:grid;gap:4px">${sheets}</div></div>`;
+  }).join("");
+  const hasKids = state.kids.length>0 && !state.example;
+  showModal(`<h2>Какие листы загрузить</h2>
+    <p class="help">Отметьте листы со списками детей. Столбцы находятся по заголовкам: ФИО ребёнка, дата рождения, ФИО родителя, телефон, адрес, район, комментарии, категория. Пол определяется по отчеству, его можно поправить.</p>
+    ${rowsHtml}
+    <label class="row" style="gap:6px"><input type="radio" name="impMode" value="add" ${hasKids?"checked":""}> Добавить к уже загруженным детям (повторы по ФИО и дате рождения пропускаются)</label>
+    <label class="row" style="gap:6px"><input type="radio" name="impMode" value="replace" ${hasKids?"":"checked"}> Заменить список детей полностью</label>
+    <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn primary" data-act="doImport">Загрузить</button></div>`);
+}
+function doImport(){
+  const picks=[...document.querySelectorAll('.modal input[type=checkbox]:checked')].map(c=>({b:+c.dataset.b,s:+c.dataset.s}));
+  const mode=(document.querySelector('.modal input[name=impMode]:checked')||{}).value||"add";
+  if(!picks.length){ toast("Отметьте хотя бы один лист"); return; }
+  let added=0, dup=0; const errs=[];
+  if(mode==="replace"||state.example){ const keepSquads = state.example? [] : state.squads; state.kids=[]; state.wishes=[]; state.dismissed=[]; if(state.example){ state.squads=keepSquads; state.example=false; state.name="Новая смена"; } }
+  const keyOf=k=> k.placeholder? null : norm(k.fio)+"|"+k.dob;
+  const seen=new Set(state.kids.map(keyOf).filter(Boolean));
+  for(const p of picks){
+    const b=pendingBooks[p.b]; const sn=b.wb.SheetNames[p.s];
+    const res=parseSheet(b.wb.Sheets[sn], `${b.file.replace(/\.[^.]+$/,"")} / ${sn}`);
+    if(res.error){ errs.push(res.error); continue; }
+    for(const k of res.kids){ const key=keyOf(k); if(key && seen.has(key)){ dup++; continue; } if(key) seen.add(key); state.kids.push(k); added++; }
+  }
+  closeModal(); save(); render();
+  toast(`Загружено: ${added}${dup?`, повторов пропущено: ${dup}`:""}${errs.length?`. ${errs.join("; ")}`:""}`);
+}
+
+/* ============ wishes: suggestions from comments ============ */
+function suggestWishes(){
+  const real=state.kids.filter(k=>!k.placeholder && k.fio);
+  const out=[]; const have=new Set(state.wishes.map(w=>w.type+"|"+[...w.kids].sort().join(",")));
+  const dismissed=new Set(state.dismissed||[]);
+  for(const a of real){
+    const c=norm(a.comment); if(!c) continue;
+    const type = /разн/.test(c) ? "apart" : /комнат|номер|засел|размещ|селить/.test(c) ? "room" : "squad";
+    for(const b of real){
+      if(b===a) continue;
+      const [sb, nb]=norm(b.fio).split(" ");
+      if(!sb || sb.length<3) continue;
+      const stem = sb.length<=4? sb : sb.slice(0, sb.length-2);
+      const re = new RegExp("(^|[^а-яa-z])"+stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+      if(!re.test(c)) continue;
+      // surname alone gives false hits ("Александров" in "Александром"), so the first name must be there too
+      const nameHit = nb && new RegExp("(^|[^а-яa-z])"+nb.slice(0,Math.max(3,nb.length-2))).test(c);
+      if(!nameHit) continue;
+      const pair=[a.id,b.id].sort(); const key=type+"|"+pair.join(",");
+      if(have.has(key) || dismissed.has(key) || out.some(o=>o.key===key)) continue;
+      out.push({key,type,kids:pair,from:a.id});
+    }
+  }
+  return out;
+}
+const WTYPE={room:"Одна комната",squad:"Один отряд",apart:"Разные отряды"};
+function wishOk(w){
+  const ks=w.kids.map(kidById).filter(Boolean); if(ks.length<2) return null;
+  if(ks.some(k=>k.squad===null)) return null;
+  if(w.type==="apart") return new Set(ks.map(k=>k.squad)).size===ks.length;
+  if(w.type==="squad") return new Set(ks.map(k=>k.squad)).size===1;
+  return new Set(ks.map(k=>k.squad+"/"+k.room)).size===1;
+}
+
+/* ============ allocation ============ */
+function subsetSums(sizes){ let set=new Set([0]); for(const z of sizes){ const n=new Set(set); for(const v of set) n.add(v+z); set=n; } return [...set].sort((a,b)=>a-b); }
+
+function autoAllocate(quiet){
+  const S=state.squads, kids=state.kids, notes=[];
+  if(!S.length){ toast("Сначала задайте отряды и комнаты"); tab="squads"; render(); return; }
+  for(const k of kids){ if(!k.locked){ k.squad=null; k.room=null; } else if(k.squad!==null && k.squad>=S.length){ k.squad=null; k.room=null; k.locked=false; } }
+  const left=S.map((s,i)=>capOf(s)-kids.filter(k=>k.locked&&k.squad===i).length);
+  // ordering
+  const dir = state.order==="young" ? -1 : 1;
+  const known=kids.filter(k=>!k.placeholder && k.dob).sort((a,b)=> dir*(a.dob<b.dob?-1:a.dob>b.dob?1:0) || (a.fio<b.fio?-1:1));
+  const noDob=kids.filter(k=>!k.placeholder && !k.dob);
+  const ph=kids.filter(k=>k.placeholder);
+  const order=[...known,...noDob,...ph]; const rank=new Map(order.map((k,i)=>[k.id,i]));
+  // groups (room + squad wishes)
+  const parent=new Map(kids.map(k=>[k.id,k.id]));
+  const find=x=>{ while(parent.get(x)!==x){ parent.set(x,parent.get(parent.get(x))); x=parent.get(x);} return x; };
+  for(const w of state.wishes){ if(w.type==="apart") continue; const ids=w.kids.filter(id=>parent.has(id)); for(let i=1;i<ids.length;i++){ const a=find(ids[0]), b=find(ids[i]); if(a!==b) parent.set(b,a); } }
+  const groups=new Map(); for(const k of kids){ const r=find(k.id); if(!groups.has(r)) groups.set(r,[]); groups.get(r).push(k); }
+  const grouped=new Set(); for(const g of groups.values()) if(g.length>1) g.forEach(k=>grouped.add(k.id));
+  const apart=new Map(); for(const w of state.wishes){ if(w.type!=="apart") continue; for(const a of w.kids) for(const b of w.kids) if(a!==b){ if(!apart.has(a)) apart.set(a,new Set()); apart.get(a).add(b);} }
+  const conflicts=(unit,t)=> unit.some(k=> [...(apart.get(k.id)||[])].some(id=>{ const o=kidById(id); return o && o.squad===t; }));
+  // sequential fill
+  let p=0;
+  for(const k of order){
+    if(k.squad!==null) continue;
+    const g=groups.get(find(k.id));
+    let unit=g.filter(x=>x.squad===null);
+    const lockedIn=g.find(x=>x.locked && x.squad!==null);
+    let t=-1;
+    const tryOrder = lockedIn? [lockedIn.squad] : [...S.keys()].slice(p).concat([...S.keys()].slice(0,p));
+    for(const i of tryOrder){ if(left[i]>=unit.length && !conflicts(unit,i)){ t=i; break; } }
+    if(t<0){ for(const i of tryOrder){ if(left[i]>=1){ t=i; break; } } if(t<0) continue; unit=[k]; notes.push(`Группу пожеланий с ${shortName(k)} пришлось разделить: не хватило мест в одном отряде`); }
+    for(const x of unit){ if(left[t]<=0) break; x.squad=t; left[t]--; }
+    while(p<S.length && left[p]<=0) p++;
+  }
+  const unplaced=kids.filter(k=>k.squad===null).length;
+  if(unplaced) notes.push(`Не хватило мест: ${unplaced} чел. остались нераспределёнными`);
+  // gender balance via boundary swaps
+  const movable=k=> !k.locked && !grouped.has(k.id) && !k.placeholder && (k.sex==="М"||k.sex==="Ж");
+  const info=S.map((s,i)=>{ const m=kids.filter(k=>k.squad===i); return {total:sum(roomsOf(s)), sums:subsetSums(roomsOf(s)), b:m.filter(k=>k.sex==="М").length, k:m.filter(k=>k.sex==="М"||k.sex==="Ж").length}; });
+  const feas=(i,x)=>{ const f=info[i]; if(x<0||x>f.k) return false; return f.sums.some(Sm=> Sm>=x && Sm-x<=f.total-f.k); };
+  let dp=new Map([[0,{cost:0,path:[]}]]); let cumB=0;
+  for(let i=0;i<S.length;i++){
+    cumB+=info[i].b; const nd=new Map();
+    for(const [c,v] of dp){ for(let x=0;x<=info[i].k;x++){ if(!feas(i,x)) continue; const nc=c+x; const cost=v.cost+Math.abs(nc-cumB); const cur=nd.get(nc); if(!cur||cur.cost>cost) nd.set(nc,{cost,path:v.path.concat(x)}); } }
+    dp=nd;
+  }
+  const best=dp.get(cumB); let swaps=0;
+  if(!best){ notes.push("Не получилось подобрать число мальчиков и девочек так, чтобы все комнаты были однополыми. Проверьте размеры комнат и количество мест."); }
+  else {
+    const target=best.path;
+    for(let i=0;i<S.length-1;i++){
+      let guard=0;
+      while(guard++<200){
+        const b=kids.filter(k=>k.squad===i&&k.sex==="М").length; const d=target[i]-b; if(d===0) break;
+        const need=d>0?"М":"Ж", give=d>0?"Ж":"М";
+        const outs=kids.filter(k=>k.squad===i&&k.sex===give&&movable(k)).sort((a,b)=>rank.get(b.id)-rank.get(a.id));
+        const ins=kids.filter(k=>k.squad!==null&&k.squad>i&&k.sex===need&&movable(k)).sort((a,b)=> a.squad-b.squad || rank.get(a.id)-rank.get(b.id));
+        if(!outs.length||!ins.length){ notes.push(`Отряд «${S[i].name}»: не нашлось, кем поменять для баланса мальчиков и девочек`); break; }
+        const o=outs[0], n=ins[0]; const ts=n.squad; n.squad=i; o.squad=ts; swaps++;
+      }
+    }
+    if(swaps) notes.push(`Для однополых комнат ${swaps} раз поменял местами мальчика и девочку соседних по возрасту отрядов`);
+  }
+  // rooms
+  const siblingKey=k=> norm(k.parent)+"|"+norm(k.phone)+"|"+k.sex;
+  for(let i=0;i<S.length;i++){
+    const sizes=roomsOf(S[i]); const members=kids.filter(k=>k.squad===i);
+    members.forEach(k=>{ if(!k.locked || k.room===null || k.room>=sizes.length) k.room=null; });
+    const lockedR=members.filter(k=>k.room!==null);
+    const boys=members.filter(k=>k.sex==="М"), girls=members.filter(k=>k.sex==="Ж"), unk=members.filter(k=>k.sex!=="М"&&k.sex!=="Ж");
+    const forceB=new Set(lockedR.filter(k=>k.sex==="М").map(k=>k.room)), forceG=new Set(lockedR.filter(k=>k.sex==="Ж").map(k=>k.room));
+    const total=sum(sizes); let bestMask=-1, bestScore=1e9;
+    const n=sizes.length;
+    if(n<=14){
+      for(let m=0;m<(1<<n);m++){
+        let Sm=0, ok=true; for(let j=0;j<n;j++){ const isB=!!(m&(1<<j)); if(isB) Sm+=sizes[j]; if(isB&&forceG.has(j)||!isB&&forceB.has(j)){ ok=false; break; } }
+        if(!ok||Sm<boys.length||total-Sm<girls.length) continue;
+        const score=(Sm-boys.length)*2 + ((total-Sm)-girls.length) + (m&1?0:0.1);
+        if(score<bestScore){ bestScore=score; bestMask=m; }
+      }
+    }
+    if(bestMask<0){ notes.push(`Отряд «${S[i].name}»: мальчиков и девочек не удаётся развести по комнатам`); bestMask=0; }
+    const roomSex=sizes.map((_,j)=> bestMask&(1<<j)?"М":"Ж");
+    const capLeft=sizes.slice(); lockedR.forEach(k=>capLeft[k.room]--);
+    const place=(list,sex)=>{
+      const roomIdx=sizes.map((_,j)=>j).filter(j=>roomSex[j]===sex);
+      const free=list.filter(k=>k.room===null);
+      // units: room-wish groups, then same-sex siblings
+      const uf=new Map(free.map(k=>[k.id,k.id])); const f=x=>{ while(uf.get(x)!==x) x=uf.get(x); return x; };
+      for(const w of state.wishes){ if(w.type!=="room") continue; const ids=w.kids.filter(id=>uf.has(id)); for(let q=1;q<ids.length;q++){ const a=f(ids[0]),b=f(ids[q]); if(a!==b) uf.set(b,a);} }
+      const sib=new Map(); free.forEach(k=>{ if(!k.parent&&!k.phone) return; const key=siblingKey(k); if(!sib.has(key)) sib.set(key,[]); sib.get(key).push(k); });
+      for(const g of sib.values()) if(g.length>1 && g.length<=4){ for(let q=1;q<g.length;q++){ const a=f(g[0].id),b=f(g[q].id); if(a!==b) uf.set(b,a);} }
+      const um=new Map(); free.forEach(k=>{ const r=f(k.id); if(!um.has(r)) um.set(r,[]); um.get(r).push(k); });
+      let units=[...um.values()].map(u=>u.sort((a,b)=>rank.get(a.id)-rank.get(b.id))).sort((a,b)=>rank.get(a[0].id)-rank.get(b[0].id));
+      // lockedR in same room pulls its wish-mates: handled by greedy order
+      for(let tries=0;tries<40;tries++){
+        const cl=capLeft.slice(); const asg=new Map(); const placedU=new Set();
+        for(const j of roomIdx){ for(const u of units){ if(placedU.has(u)) continue; if(u.length<=cl[j]){ u.forEach(k=>asg.set(k.id,j)); cl[j]-=u.length; placedU.add(u);} if(cl[j]<=0) break; } }
+        const miss=units.filter(u=>!placedU.has(u));
+        if(!miss.length || tries===39){
+          if(miss.length){ // split remaining units into singles
+            const singles=miss.flat(); for(const k of singles){ const j=roomIdx.find(j=>cl[j]>0); if(j===undefined) break; asg.set(k.id,j); cl[j]--; }
+            notes.push(`Отряд «${S[i].name}»: часть пожеланий о комнате не уместилась`);
+          }
+          for(const k of free){ if(asg.has(k.id)) k.room=asg.get(k.id); }
+          roomIdx.forEach(j=>capLeft[j]=cl[j]);
+          return;
+        }
+        units.splice(units.indexOf(miss[0]),1); units.unshift(miss[0]);
+      }
+    };
+    place(boys,"М"); place(girls,"Ж");
+    for(const k of unk){ if(k.room!==null) continue; let j=-1; for(let q=0;q<n;q++){ if(capLeft[q]>0){ j=q; break; } } if(j<0) break; k.room=j; capLeft[j]--; }
+    const lost=members.filter(k=>k.room===null).length; if(lost) notes.push(`Отряд «${S[i].name}»: ${lost} чел. без комнаты`);
+  }
+  lastReport={when:new Date(), notes};
+  save();
+  if(quiet) return;
+  tab="board"; render();
+  toast("Распределение готово");
+}
+
+/* ============ validation ============ */
+function issues(){
+  const out=[]; const S=state.squads;
+  const un=state.kids.filter(k=>k.squad===null);
+  if(un.length) out.push({bad:true,k:"Не распределены",t:`${un.length}: ${un.slice(0,6).map(shortName).join(", ")}${un.length>6?"…":""}`});
+  S.forEach((s,i)=>{
+    const m=state.kids.filter(k=>k.squad===i); const cap=sum(roomsOf(s));
+    if(m.length>cap) out.push({bad:true,k:s.name,t:`детей ${m.length}, кроватей ${cap}`});
+    s.rooms.forEach((r,j)=>{
+      const rm=m.filter(k=>k.room===j);
+      if(rm.length>r.size) out.push({bad:true,k:`${s.name}, комната ${j+1}`,t:`${rm.length} человек на ${r.size} мест`});
+      const sx=new Set(rm.map(k=>k.sex).filter(x=>x==="М"||x==="Ж")); if(sx.size>1) out.push({bad:true,k:`${s.name}, комната ${j+1}`,t:"мальчики и девочки вместе"});
+    });
+    const noRoom=m.filter(k=>k.room===null||k.room>=s.rooms.length); if(noRoom.length) out.push({bad:false,k:s.name,t:`без комнаты: ${noRoom.map(shortName).join(", ")}`});
+  });
+  for(const w of state.wishes){ const ok=wishOk(w); if(ok===false) out.push({bad:false,k:WTYPE[w.type],t:`не выполнено: ${w.kids.map(id=>kidById(id)).filter(Boolean).map(shortName).join(" + ")}`}); }
+  const nosex=state.kids.filter(k=>!k.placeholder && k.sex!=="М" && k.sex!=="Ж"); if(nosex.length) out.push({bad:false,k:"Пол не указан",t:nosex.slice(0,6).map(shortName).join(", ")+(nosex.length>6?"…":"")});
+  return out;
+}
+function kidHasIssue(k){ return state.wishes.some(w=>w.kids.includes(k.id) && wishOk(w)===false); }
+
+/* ============ render ============ */
+const $main=document.getElementById("main"), $layer=document.getElementById("layer");
+function render(){
+  document.getElementById("cKids").textContent=state.kids.length;
+  document.getElementById("cSquads").textContent=state.squads.length;
+  document.getElementById("cWishes").textContent=state.wishes.length;
+  document.getElementById("projTag").textContent=state.name + (state.example? " · пример":"");
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
+  const banner = state.example ? `<div class="banner"><span><b>Это пример</b> с выдуманными детьми, чтобы показать, как всё работает. Нажмите «Загрузить Excel» и выберите свои списки: пример заменится вашими данными.</span></div>` : "";
+  const fn={board:renderBoard,kids:renderKids,squads:renderSquads,wishes:renderWishes,help:renderHelp}[tab];
+  $main.innerHTML=banner+fn();
+}
+function sexCounts(list){ return {b:list.filter(k=>k.sex==="М").length,g:list.filter(k=>k.sex==="Ж").length,u:list.filter(k=>k.sex!=="М"&&k.sex!=="Ж").length}; }
+function chip(k){
+  const cls=k.sex==="М"?"М":k.sex==="Ж"?"Ж":"U"; const a=ageOf(k.dob);
+  return `<span class="chip ${cls} ${selectedKid===k.id?"sel":""}" draggable="true" data-kid="${k.id}" title="${esc(k.fio)}${k.dob?" · "+fmtDate(k.dob):""}${k.comment?"\n"+esc(k.comment):""}"><i class="d"></i>${esc(shortName(k))}${a!==null?` <span class="a num">${a}</span>`:""}${kidHasIssue(k)?' <span class="w" title="Пожелание не выполнено">!</span>':""}${k.locked?' <span class="lk" title="Закреплён вручную">●</span>':""}</span>`;
+}
+function renderBoard(){
+  const S=state.squads, kids=state.kids;
+  const placed=kids.filter(k=>k.squad!==null).length; const cap=sum(S.map(s=>sum(roomsOf(s))));
+  const iss=issues(); const bad=iss.filter(x=>x.bad).length;
+  const wOk=state.wishes.filter(w=>wishOk(w)===true).length, wAll=state.wishes.length;
+  let h=`<div class="summary">
+    <div class="stat"><div class="v num">${kids.length}</div><div class="l">в списке (из них бронь/пустые: ${kids.filter(k=>k.placeholder).length})</div></div>
+    <div class="stat"><div class="v num">${cap}</div><div class="l">кроватей в ${S.length} отрядах</div></div>
+    <div class="stat ${placed===kids.length?"ok":"bad"}"><div class="v num">${placed}</div><div class="l">распределено</div></div>
+    <div class="stat ${bad?"bad":"ok"}"><div class="v num">${bad}</div><div class="l">ошибок размещения</div></div>
+    <div class="stat"><div class="v num">${wOk}/${wAll}</div><div class="l">пожеланий выполнено</div></div>
+  </div>`;
+  if(lastReport && lastReport.notes.length) h+=`<div class="status"><b>Что получилось при автораспределении</b>${lastReport.notes.map(n=>`<span>• ${esc(n)}</span>`).join("")}</div>`;
+  if(iss.length) h+=`<details class="panel" ${bad?"open":""}><summary><b>Проверка</b> <span class="muted">(${iss.length})</span></summary><div class="issues">${iss.map(x=>`<div class="issue ${x.bad?"bad":""}"><span class="k">${esc(x.k)}</span><span>${esc(x.t)}</span></div>`).join("")}</div></details>`;
+  const un=kids.filter(k=>k.squad===null);
+  h+=`<div class="pool" data-drop="pool"><div class="row" style="justify-content:space-between"><b>Не распределены <span class="num muted">(${un.length})</span></b>
+      <div class="legend"><span><i style="background:var(--boy)"></i>мальчик</span><span><i style="background:var(--girl)"></i>девочка</span><span><i style="background:var(--unk)"></i>пол неизвестен</span><span>● закреплён вручную</span><span><b style="color:var(--warn)">!</b> пожелание не выполнено</span></div></div>
+      <div class="beds">${un.map(chip).join("")||'<span class="muted">Все на местах. Перетащите ребёнка сюда, чтобы убрать его из отряда.</span>'}</div></div>`;
+  if(!S.length){ h+=`<div class="panel"><h2>Отрядов пока нет</h2><p class="help">Откройте вкладку «Отряды и комнаты» и задайте отряды: сколько комнат и на сколько мест.</p><div><button class="btn primary" data-act="goSquads">Задать отряды</button></div></div>`; return h; }
+  h+=`<div class="board">`+S.map((s,i)=>{
+    const m=kids.filter(k=>k.squad===i); const c=sum(roomsOf(s)); const sc=sexCounts(m);
+    const ages=m.filter(k=>k.dob).map(k=>k.dob).sort(); const yr=ages.length?`${ages[0].slice(0,4)}–${ages[ages.length-1].slice(0,4)} г.р.`:"";
+    const rooms=s.rooms.map((r,j)=>{
+      const rm=m.filter(k=>k.room===j).sort((a,b)=>(a.dob||"9")<(b.dob||"9")?-1:1);
+      const sx=[...new Set(rm.map(k=>k.sex).filter(x=>x==="М"||x==="Ж"))]; const mixed=sx.length>1; const over=rm.length>r.size;
+      const label= sx.length===1? (sx[0]==="М"?"мальчики":"девочки") : mixed? "смешано!" : "свободна";
+      const empties=Math.max(0,r.size-rm.length);
+      return `<div class="room ${mixed||over?"bad":""}" data-drop="room" data-sq="${i}" data-room="${j}"><div class="room-h"><span><b>Комната ${j+1}</b> · <span class="sx-${sx.length===1?sx[0]:""}">${label}</span></span>
+        <span class="rctl"><button class="ib" data-act="rMinus" data-sq="${i}" data-room="${j}" title="Убрать одно место" aria-label="Убрать место в комнате ${j+1}">−</button><span class="num" title="Занято / мест">${rm.length}/${r.size}</span><button class="ib" data-act="rPlus" data-sq="${i}" data-room="${j}" title="Добавить место" aria-label="Добавить место в комнату ${j+1}">+</button><button class="ib del" data-act="rDel" data-sq="${i}" data-room="${j}" title="Удалить комнату" aria-label="Удалить комнату ${j+1}">×</button></span></div>
+        <div class="beds">${rm.map(chip).join("")}${'<span class="bed-empty" title="Свободное место"></span>'.repeat(empties)}</div></div>`;
+    }).join("");
+    const noRoom=m.filter(k=>k.room===null||k.room>=s.rooms.length);
+    return `<section class="squad ${m.length>c?"over":""}"><div class="squad-h"><div class="t"><h3>${esc(s.name)}</h3><span class="fill num">${m.length}/${c}</span></div>
+      <div class="meter">${c?`<i class="b" style="width:${sc.b/c*100}%"></i><i class="g" style="width:${sc.g/c*100}%"></i><i class="u" style="width:${sc.u/c*100}%"></i>`:""}</div>
+      <div class="sub num"><span>мальч. ${sc.b}</span><span>дев. ${sc.g}</span>${sc.u?`<span>бронь/без пола ${sc.u}</span>`:""}<span>${yr}</span><span class="free-ctl">свободных оставить: <button class="ib" data-act="fMinus" data-sq="${i}" aria-label="Меньше свободных мест">−</button><b>${s.free||0}</b><button class="ib" data-act="fPlus" data-sq="${i}" aria-label="Больше свободных мест">+</button></span></div></div>
+      <div class="rooms">${rooms}${noRoom.length?`<div class="room" data-drop="room" data-sq="${i}" data-room=""><div class="room-h"><b>Без комнаты</b></div><div class="beds">${noRoom.map(chip).join("")}</div></div>`:""}
+      <button class="add-room" data-act="rAdd" data-sq="${i}">+ Добавить комнату на ${s.rooms.length?s.rooms[s.rooms.length-1].size:5} мест</button></div></section>`;
+  }).join("")+`</div>`;
+  return h;
+}
+function renderKids(){
+  const q=norm(kidFilter);
+  const list=state.kids.filter(k=>!q || norm(k.fio+" "+k.district+" "+k.comment).includes(q));
+  const sqOpts=i=>`<option value="">—</option>`+state.squads.map((s,j)=>`<option value="${j}" ${i===j?"selected":""}>${esc(s.name)}</option>`).join("");
+  const rows=list.map((k,ix)=>`<tr class="${k.placeholder?"ph":""}" data-kid="${k.id}">
+    <td class="num muted">${ix+1}</td>
+    <td class="fio-cell"><input type="text" id="f-${k.id}" data-f="fio" value="${esc(k.fio)}"></td>
+    <td><select data-f="sex" id="s-${k.id}"><option value="" ${!k.sex?"selected":""}>?</option><option ${k.sex==="М"?"selected":""}>М</option><option ${k.sex==="Ж"?"selected":""}>Ж</option></select></td>
+    <td><input type="date" data-f="dob" id="d-${k.id}" value="${k.dob}"></td>
+    <td class="c num">${ageOf(k.dob)??""}</td>
+    <td><input type="text" data-f="district" id="r-${k.id}" value="${esc(k.district)}"></td>
+    <td><select data-f="squad" id="q-${k.id}">${sqOpts(k.squad)}</select></td>
+    <td class="cmt-cell">${esc(k.comment)}</td>
+    <td><button class="btn sm ghost" data-act="openKid" data-id="${k.id}">Подробнее</button></td></tr>`).join("");
+  return `<div class="panel"><div class="row" style="justify-content:space-between"><h2>Дети</h2>
+    <div class="row"><input type="search" id="kidSearch" placeholder="Поиск по ФИО, району, комментарию" value="${esc(kidFilter)}" style="min-width:240px">
+    <button class="btn sm" data-act="addKid">Добавить ребёнка</button><button class="btn sm" data-act="addPh">Добавить бронь</button><button class="btn sm danger" data-act="clearKids">Очистить список</button></div></div>
+    <p class="help">Пол определён по отчеству: проверьте строки со знаком «?». Строки бронь и пустые путёвки выделены цветом: на них место держится, но пол неизвестен.</p></div>
+    <div class="tbl-wrap"><table><thead><tr><th>№</th><th>ФИО ребёнка</th><th>Пол</th><th>Дата рождения</th><th>Возр.</th><th>Район / откуда</th><th>Отряд</th><th>Комментарий</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="muted">Пусто. Нажмите «Загрузить Excel».</td></tr>`}</tbody></table></div>`;
+}
+function renderSquads(){
+  const S=state.squads;
+  const rows=S.map((s,i)=>`<div class="sq-row" data-sq="${i}">
+    <span class="n num">${i+1}</span>
+    <label class="field"><span>Название</span><input type="text" id="sn-${s.id}" data-sf="name" value="${esc(s.name)}"></label>
+    <label class="field"><span>Комнаты: мест в каждой через запятую</span><input type="text" id="sr-${s.id}" data-sf="rooms" value="${s.rooms.map(r=>r.size).join(", ")}"></label>
+    <label class="field"><span>Оставить свободных</span><input type="number" min="0" id="sf-${s.id}" data-sf="free" value="${s.free||0}"></label>
+    <div class="cap num"><b>${capOf(s)}</b> <span class="muted">детей из ${sum(roomsOf(s))} мест</span></div>
+    <div class="row" style="gap:4px"><button class="btn sm ghost" data-act="sqUp" data-i="${i}" title="Выше">↑</button><button class="btn sm ghost" data-act="sqDown" data-i="${i}" title="Ниже">↓</button><button class="btn sm danger" data-act="sqDel" data-i="${i}">Удалить</button></div>
+  </div>`).join("");
+  const kidsN=state.kids.length, capAll=sum(S.map(capOf)), bedsAll=sum(S.map(s=>sum(roomsOf(s))));
+  return `<div class="panel"><h2>Смена</h2><div class="row">
+      <label class="field"><span>Название смены</span><input type="text" id="setName" value="${esc(state.name)}"></label>
+      <label class="field"><span>Возраст считать на дату</span><input type="date" id="setRef" value="${state.refDate}"></label>
+      <label class="field"><span>Порядок отрядов</span><select id="setOrder"><option value="old" ${state.order==="old"?"selected":""}>1-й отряд — самые старшие</option><option value="young" ${state.order==="young"?"selected":""}>1-й отряд — самые младшие</option></select></label>
+    </div></div>
+    <div class="panel"><div class="row" style="justify-content:space-between"><h2>Отряды и комнаты</h2>
+      <div class="row"><button class="btn sm" data-act="sqAdd">Добавить отряд</button><button class="btn sm" data-act="preset10">Шаблон: 10 отрядов (4 смена)</button></div></div>
+      <p class="help">Мальчики и девочки живут в разных комнатах: конструктор сам решает, какие комнаты мальчиковые. «Оставить свободных» — сколько кроватей в отряде не занимать.</p>
+      <div>${rows||'<p class="muted">Отрядов пока нет. Добавьте отряд или возьмите шаблон.</p>'}</div>
+      <div class="row num"><b>Итого:</b> кроватей ${bedsAll}, займём ${capAll}, детей в списке ${kidsN} ${kidsN>capAll?`<span class="pill" style="background:var(--bad-soft);color:var(--bad)">не хватает ${kidsN-capAll} мест</span>`: kidsN<capAll?`<span class="pill">свободно ${capAll-kidsN}</span>`:`<span class="pill" style="background:var(--accent-soft)">мест ровно</span>`}</div>
+    </div>`;
+}
+function renderWishes(){
+  const sug=suggestWishes();
+  const name=id=>{ const k=kidById(id); return k? esc(shortName(k)) : "?"; };
+  const wl=state.wishes.map((w,i)=>{ const ok=wishOk(w);
+    return `<div class="wish"><span class="type">${WTYPE[w.type]}</span><span>${w.kids.map(name).join(" + ")}</span>
+      ${ok===true?'<span class="ok">✓ выполнено</span>':ok===false?'<span class="no">✗ не выполнено</span>':'<span class="muted">ещё не распределены</span>'}
+      <button class="btn sm ghost" data-act="wDel" data-i="${i}">Удалить</button></div>`; }).join("");
+  const sl=sug.map((s,i)=>{ const a=kidById(s.from);
+    return `<div class="wish"><span class="type">${WTYPE[s.type]}?</span><span>${s.kids.map(name).join(" + ")}</span>
+      <select id="st-${i}" data-sugtype="${i}"><option value="room" ${s.type==="room"?"selected":""}>Одна комната</option><option value="squad" ${s.type==="squad"?"selected":""}>Один отряд</option><option value="apart" ${s.type==="apart"?"selected":""}>Разные отряды</option></select>
+      <button class="btn sm primary" data-act="sAcc" data-i="${i}">Принять</button><button class="btn sm ghost" data-act="sDis" data-i="${i}">Не то</button>
+      <span class="src">Из комментария к ${esc(shortName(a))}: «${esc(a.comment)}»</span></div>`; }).join("");
+  const opts=state.kids.filter(k=>!k.placeholder).map(k=>`<option value="${esc(k.fio)}${k.dob?" · "+fmtDate(k.dob):""}"></option>`).join("");
+  return `<div class="panel"><h2>Добавить пожелание</h2>
+    <div class="row"><select id="nwType"><option value="room">Одна комната</option><option value="squad">Один отряд</option><option value="apart">Разные отряды</option></select>
+    <input type="text" id="nwA" list="kidList" placeholder="Первый ребёнок" style="min-width:220px"><input type="text" id="nwB" list="kidList" placeholder="Второй ребёнок" style="min-width:220px">
+    <button class="btn primary sm" data-act="wAdd">Добавить</button></div>
+    <datalist id="kidList">${opts}</datalist>
+    <p class="help">«Одна комната» и «Один отряд» держат детей вместе при автораспределении, «Разные отряды» разводит их. Если детей больше двух, добавьте несколько пар с общим ребёнком.</p></div>
+    ${sl?`<div class="panel"><h2>Найдено в комментариях <span class="muted num">(${sug.length})</span></h2><p class="help">Конструктор нашёл в комментариях фамилии других детей из списка. Проверьте и примите нужные.</p>${sl}</div>`:""}
+    <div class="panel"><h2>Пожелания <span class="muted num">(${state.wishes.length})</span></h2>${wl||'<p class="muted">Пока нет.</p>'}</div>`;
+}
+function renderHelp(){
+  return `<div class="panel"><h2>Как пользоваться</h2><div class="help" style="display:grid;gap:8px;color:var(--ink)">
+  <p><b>1. Загрузите списки.</b> «Загрузить Excel» принимает .xlsx и .xls (в том числе выгрузки с сайта), можно несколько файлов сразу. Отметьте нужные листы. Повторы (то же ФИО и дата рождения) пропускаются. Строки «бронь» и пустые путёвки (есть номер и район, нет ФИО) становятся местами без имени.</p>
+  <p><b>2. Задайте отряды.</b> На вкладке «Отряды и комнаты» для каждого отряда перечислите комнаты через запятую, например <span class="kbd">6, 6, 5, 5, 4</span>, и сколько кроватей оставить свободными. Порядок отрядов: первый — самые старшие (можно поменять).</p>
+  <p><b>3. Проверьте пожелания.</b> На вкладке «Пожелания» конструктор показывает, кого родители просили поселить вместе или развести. Примите подходящие или добавьте свои.</p>
+  <p><b>4. Нажмите «Распределить автоматически».</b> Дети идут по возрасту от старших к младшим, группы по пожеланиям держатся вместе, комнаты получаются только для мальчиков или только для девочек. Родные братья или сестры одного пола в одном отряде по возможности селятся в одну комнату.</p>
+  <p><b>5. Поправьте вручную.</b> Перетащите ребёнка в другую комнату или нажмите на него и выберите отряд и комнату. Переставленный вручную ребёнок закрепляется (●): при повторном автораспределении он останется на месте. Бронь и пустые путёвки удобно заранее закрепить в нужном отряде.</p>
+  <p><b>Комнаты прямо на доске.</b> У каждой комнаты есть кнопки <span class="kbd">−</span> и <span class="kbd">+</span> (убрать или добавить место) и <span class="kbd">×</span> (удалить комнату: её дети переходят в «Без комнаты» этого отряда). Внизу отряда есть кнопка «Добавить комнату», в шапке отряда настраивается, сколько мест оставить свободными. После изменений нажмите «Распределить автоматически» или поправьте детей вручную.</p>
+  <p><b>6. Скачайте Excel.</b> Получится файл со сводкой и отдельным листом на каждый отряд в формате листа «Центральный»: №, ФИО, дата рождения, родитель, телефон, адрес, район, комментарии, категория, комната.</p>
+  <p><b>Сохранить проект</b> скачивает файл .json со всем состоянием, его можно открыть позже на любом компьютере. Кроме того, работа автоматически сохраняется в этом браузере.</p>
+  <p class="muted">Данные детей обрабатываются только в вашем браузере и никуда не отправляются.</p>
+  <div><button class="btn danger sm" data-act="resetAll">Начать заново</button></div></div></div>`;
+}
+
+/* ============ drawer (kid editor) ============ */
+function openKid(id){
+  const k=kidById(id); if(!k) return; selectedKid=id;
+  const sqOpts=`<option value="">— не распределён —</option>`+state.squads.map((s,j)=>`<option value="${j}" ${k.squad===j?"selected":""}>${esc(s.name)}</option>`).join("");
+  const roomOpts= k.squad!==null && state.squads[k.squad] ? `<option value="">—</option>`+state.squads[k.squad].rooms.map((r,j)=>`<option value="${j}" ${k.room===j?"selected":""}>Комната ${j+1} (${r.size} мест)</option>`).join("") : `<option value="">—</option>`;
+  const ws=state.wishes.filter(w=>w.kids.includes(id)).map(w=>`<div class="wish"><span class="type">${WTYPE[w.type]}</span><span>${w.kids.filter(x=>x!==id).map(x=>esc(shortName(kidById(x)||{fio:"?"}))).join(", ")}</span>${wishOk(w)===false?'<span class="no">✗</span>':wishOk(w)?'<span class="ok">✓</span>':""}</div>`).join("");
+  const f=(key,label,type="text")=>`<label class="field"><span>${label}</span><input type="${type}" id="k-${key}" data-kf="${key}" value="${esc(k[key])}"></label>`;
+  $layer.innerHTML=`<div class="scrim" data-act="closeDrawer"><aside class="drawer" role="dialog" aria-label="Карточка ребёнка">
+    <div class="row" style="justify-content:space-between"><h2 style="font-size:16px">${esc(k.fio||"Без имени")}</h2><button class="btn sm ghost" data-act="closeDrawer">Закрыть</button></div>
+    <div class="grid2">
+      <label class="field"><span>Отряд</span><select id="k-squad" data-kf="squad">${sqOpts}</select></label>
+      <label class="field"><span>Комната</span><select id="k-room" data-kf="room">${roomOpts}</select></label>
+    </div>
+    <label class="row" style="gap:6px"><input type="checkbox" id="k-locked" data-kf="locked" ${k.locked?"checked":""}> Закрепить: автораспределение его не трогает</label>
+    ${f("fio","ФИО ребёнка")}
+    <div class="grid2"><label class="field"><span>Пол</span><select id="k-sex" data-kf="sex"><option value="" ${!k.sex?"selected":""}>не указан</option><option ${k.sex==="М"?"selected":""}>М</option><option ${k.sex==="Ж"?"selected":""}>Ж</option></select></label>
+    ${f("dob","Дата рождения","date")}</div>
+    ${f("parent","ФИО родителя")}${f("phone","Телефон")}${f("address","Адрес")}
+    <div class="grid2">${f("district","Район / откуда")}${f("category","Категория семьи")}</div>
+    <label class="field"><span>Комментарий</span><textarea id="k-comment" data-kf="comment">${esc(k.comment)}</textarea></label>
+    <label class="row" style="gap:6px"><input type="checkbox" id="k-ph" data-kf="placeholder" ${k.placeholder?"checked":""}> Это бронь или пустая путёвка (место без ребёнка)</label>
+    <div class="muted" style="font-size:12px">Источник: ${esc(k.source||"—")}</div>
+    ${ws?`<div style="display:grid;gap:6px"><b>Пожелания</b>${ws}</div>`:""}
+    <div class="row" id="delZone"><button class="btn sm danger" data-act="delKidAsk">Удалить из списка</button></div>
+  </aside></div>`;
+  render();
+}
+function closeDrawer(){ $layer.innerHTML=""; selectedKid=null; render(); }
+function showModal(html){ $layer.innerHTML=`<div class="modal-wrap"><div class="modal" role="dialog">${html}</div></div>`; }
+function closeModal(){ $layer.innerHTML=""; }
+
+/* ============ export ============ */
+async function getDownloads(){ try{ return window.claude? await window.claude.use("downloads") : null; }catch(e){ return null; } }
+async function saveFile(filename, data){
+  if(window.desktop && window.desktop.saveFile){ // desktop app: native "Save as" dialog
+    try{ const r=await window.desktop.saveFile(filename, data); if(r.status==="saved"){ toast("Сохранено: "+r.path); return true; } toast("Сохранение отменено"); return false; }
+    catch(e){ toast("Не удалось сохранить файл: "+(e&&e.message||e)); return false; }
+  }
+  const dl=await getDownloads();
+  if(!dl){ toast("Скачивание недоступно в этом окне. Откройте страницу на claude.ai"); return false; }
+  try{ await dl.save({filename, data}); toast("Файл передан на сохранение"); return true; }
+  catch(e){ if(e&&e.code==="declined") toast("Сохранение отменено"); else toast("Не удалось сохранить файл: "+(e&&e.message||e&&e.code||e)); return false; }
+}
+const B={style:"thin",color:{rgb:"000000"}};
+const ST={ font:{name:"Times New Roman",sz:10}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:{top:B,bottom:B,left:B,right:B} };
+const STH={ font:{name:"Times New Roman",sz:10,bold:true}, alignment:ST.alignment, border:ST.border };
+function sheetFromRows(rows, widths){
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  const rg=XLSX.utils.decode_range(ws["!ref"]);
+  for(let r=rg.s.r;r<=rg.e.r;r++) for(let c=rg.s.c;c<=rg.e.c;c++){ const a=XLSX.utils.encode_cell({r,c}); if(!ws[a]) ws[a]={t:"s",v:""}; ws[a].s= r===0? STH : ST; }
+  ws["!cols"]=(widths||DEFAULT_COLW).map(px=>({wpx:px}));
+  return ws;
+}
+function safeSheetName(n, used){ let s=String(n).replace(/[\[\]:*?\/\\]/g," ").trim().slice(0,31)||"Лист"; let b=s, i=2; while(used.has(s.toLowerCase())){ s=(b.slice(0,28)+" "+i++); } used.add(s.toLowerCase()); return s; }
+function kidRow(k,n,roomLabel){ return [n, k.placeholder? (k.fio||"Место") : k.fio, fmtDate(k.dob), k.parent, k.phone, k.address, k.district, k.comment, k.category, roomLabel]; }
+const HEAD=["№","ФИО Ребёнка","Дата рождения ребёнка","ФИО родителя","Телефон","Адрес ребёнка","Район","Комментарии покупателя","Категория семьи","Комната"];
+async function exportXlsx(){
+  if(typeof XLSX==="undefined"){ toast("Библиотека Excel не загрузилась, обновите страницу"); return; }
+  const wb=XLSX.utils.book_new(); const used=new Set(); const S=state.squads;
+  const sumRows=[["Отряд","Мест","Занято","Свободно","Мальчиков","Девочек","Бронь / без пола","Годы рождения","Комнаты"]];
+  S.forEach((s,i)=>{ const m=state.kids.filter(k=>k.squad===i); const c=sum(roomsOf(s)); const sc=sexCounts(m); const ds=m.filter(k=>k.dob).map(k=>k.dob).sort();
+    const roomsTxt=s.rooms.map((r,j)=>{ const rm=m.filter(k=>k.room===j); const sx=[...new Set(rm.map(k=>k.sex).filter(x=>x==="М"||x==="Ж"))]; return `к.${j+1}: ${rm.length}/${r.size}${sx.length===1?(sx[0]==="М"?" мальч.":" дев."):""}`; }).join("; ");
+    sumRows.push([s.name,c,m.length,c-m.length,sc.b,sc.g,sc.u, ds.length?`${ds[0].slice(0,4)}–${ds[ds.length-1].slice(0,4)}`:"", roomsTxt]); });
+  const all=state.kids.length, placed=state.kids.filter(k=>k.squad!==null).length;
+  sumRows.push(["Итого", sum(S.map(s=>sum(roomsOf(s)))), placed, sum(S.map(s=>sum(roomsOf(s))))-placed, "", "", "", "", `Всего в списке: ${all}`]);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(sumRows,[110,60,70,75,85,75,110,100,520]), safeSheetName("Сводка",used));
+  S.forEach((s,i)=>{
+    const m=state.kids.filter(k=>k.squad===i).sort((a,b)=> (a.room??99)-(b.room??99) || ((a.dob||"9")<(b.dob||"9")?-1:1));
+    const rows=[HEAD]; m.forEach((k,n)=>{ const r=k.room!==null&&s.rooms[k.room]? s.rooms[k.room] : null; const rm=m.filter(x=>x.room===k.room); const sx=[...new Set(rm.map(x=>x.sex).filter(x=>x==="М"||x==="Ж"))];
+      const lab= r? `Комната ${k.room+1} (${sx.length===1?(sx[0]==="М"?"мальчики":"девочки")+", ":""}${r.size} мест)` : "без комнаты"; rows.push(kidRow(k,n+1,lab)); });
+    XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), safeSheetName(s.name,used));
+  });
+  const un=state.kids.filter(k=>k.squad===null);
+  if(un.length){ const rows=[HEAD]; un.forEach((k,n)=>rows.push(kidRow(k,n+1,""))); XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), safeSheetName("Не распределены",used)); }
+  const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  await saveFile(`${state.name||"Распределение"}.xlsx`.replace(/[\\\/:*?"<>|]/g," "), new Uint8Array(out));
+}
+async function saveProject(){ await saveFile(`${state.name||"Проект"}.json`.replace(/[\\\/:*?"<>|]/g," "), JSON.stringify(state)); }
+
+/* ============ presets ============ */
+function preset10(){
+  const conf=[[6,6,5,5,4],[5,5,5,5,4],[5,5,5,5,4],[5,5,5,5,4],[5,5,5,5,5,4],[6,6,6,6],[6,6,6,6],[5,5,5,5,5,6],[6,6,6,4,4,5],[6,6,6]];
+  state.squads=conf.map((r,i)=>({id:uid(),name:`${101+i} отряд`,rooms:r.map(size=>({size})),free:0}));
+  state.kids.forEach(k=>{ if(k.squad!==null){ k.squad=null; k.room=null; k.locked=false; } });
+}
+
+/* ============ events ============ */
+document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button[data-tab]"); if(!b) return; tab=b.dataset.tab; try{ localStorage.setItem(LS_KEY+":tab",tab);}catch(_){} render(); });
+document.getElementById("btnImport").onclick=()=>document.getElementById("fileXlsx").click();
+document.getElementById("fileXlsx").onchange=e=>{ const f=[...e.target.files]; e.target.value=""; if(f.length) handleXlsxFiles(f); };
+document.getElementById("btnOpen").onclick=()=>document.getElementById("fileJson").click();
+document.getElementById("fileJson").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return; try{ const o=JSON.parse(await f.text()); if(!Array.isArray(o.kids)||!Array.isArray(o.squads)) throw new Error("это не файл проекта"); state=Object.assign(emptyState(),o); save(); lastReport=null; render(); toast(`Проект «${state.name}» открыт`);}catch(err){ toast("Не удалось открыть: "+err.message); } };
+document.getElementById("btnAuto").onclick=()=>autoAllocate(false);
+document.getElementById("btnExport").onclick=()=>exportXlsx();
+document.getElementById("btnSave").onclick=()=>saveProject();
+
+document.addEventListener("click",e=>{
+  const el=e.target.closest("[data-act]");
+  if(!el){ const c=e.target.closest(".chip"); if(c){ openKid(c.dataset.kid); } return; }
+  const a=el.dataset.act;
+  if(a==="closeDrawer"){ if(e.target!==el && el.classList.contains("scrim")) return; closeDrawer(); return; }
+  if(a==="close"){ closeModal(); return; }
+  if(a==="doImport"){ doImport(); return; }
+  if(a==="goSquads"){ tab="squads"; render(); return; }
+  if(a==="openKid"){ openKid(el.dataset.id); return; }
+  if(a==="addKid"||a==="addPh"){ const k=mkKid(a==="addPh"?{fio:"Бронь",placeholder:true,source:"добавлено вручную"}:{fio:"",source:"добавлено вручную"}); state.kids.push(k); state.example=false; save(); openKid(k.id); return; }
+  if(a==="clearKids"){ showModal(`<h2>Очистить список детей?</h2><p class="help">Удалятся все дети и пожелания. Отряды останутся.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn danger" data-act="clearKidsYes">Очистить</button></div>`); return; }
+  if(a==="clearKidsYes"){ state.kids=[]; state.wishes=[]; state.dismissed=[]; lastReport=null; save(); closeModal(); render(); return; }
+  if(a==="resetAll"){ showModal(`<h2>Начать заново?</h2><p class="help">Удалятся дети, отряды и пожелания в этом браузере. Сохранённые файлы проекта не пострадают.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn danger" data-act="resetYes">Начать заново</button></div>`); return; }
+  if(a==="resetYes"){ state=emptyState(); lastReport=null; save(); closeModal(); tab="board"; render(); return; }
+  if(a==="delKidAsk"){ document.getElementById("delZone").innerHTML=`<span>Удалить ребёнка из списка?</span><button class="btn sm danger" data-act="delKidYes">Да, удалить</button><button class="btn sm ghost" data-act="delKidNo">Нет</button>`; return; }
+  if(a==="delKidNo"){ openKid(selectedKid); return; }
+  if(a==="delKidYes"){ const id=selectedKid; state.kids=state.kids.filter(k=>k.id!==id); state.wishes=state.wishes.map(w=>({...w,kids:w.kids.filter(x=>x!==id)})).filter(w=>w.kids.length>1); save(); closeDrawer(); return; }
+  if(a==="rPlus"||a==="rMinus"){ const r=state.squads[+el.dataset.sq].rooms[+el.dataset.room]; r.size=Math.max(1,Math.min(99,r.size+(a==="rPlus"?1:-1))); save(); render(); return; }
+  if(a==="rAdd"){ const s=state.squads[+el.dataset.sq]; s.rooms.push({size:s.rooms.length?s.rooms[s.rooms.length-1].size:5}); save(); render(); toast(`${s.name}: добавлена комната ${s.rooms.length}`); return; }
+  if(a==="rDel"){ const i=+el.dataset.sq, j=+el.dataset.room; const s=state.squads[i]; let moved=0;
+    state.kids.forEach(k=>{ if(k.squad!==i||k.room===null) return; if(k.room===j){ k.room=null; moved++; } else if(k.room>j) k.room--; });
+    s.rooms.splice(j,1); save(); render(); toast(moved?`Комната удалена. ${moved} чел. перенесены в «Без комнаты» этого отряда`:"Комната удалена"); return; }
+  if(a==="fPlus"||a==="fMinus"){ const s=state.squads[+el.dataset.sq]; s.free=Math.max(0,(s.free||0)+(a==="fPlus"?1:-1)); save(); render(); return; }
+  if(a==="sqAdd"){ state.squads.push({id:uid(),name:`${state.squads.length+1} отряд`,rooms:[5,5,5,5].map(size=>({size})),free:0}); save(); render(); return; }
+  if(a==="preset10"){ showModal(`<h2>Поставить шаблон 10 отрядов?</h2><p class="help">Отряды 101–110 с комнатами как в 4-й смене. Текущие отряды заменятся, распределение сбросится.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn primary" data-act="preset10Yes">Поставить</button></div>`); return; }
+  if(a==="preset10Yes"){ preset10(); save(); closeModal(); render(); return; }
+  if(a==="sqDel"){ const i=+el.dataset.i; state.squads.splice(i,1); state.kids.forEach(k=>{ if(k.squad===i){k.squad=null;k.room=null;k.locked=false;} else if(k.squad!==null&&k.squad>i) k.squad--; }); save(); render(); return; }
+  if(a==="sqUp"||a==="sqDown"){ const i=+el.dataset.i, j=a==="sqUp"?i-1:i+1; if(j<0||j>=state.squads.length) return; [state.squads[i],state.squads[j]]=[state.squads[j],state.squads[i]]; state.kids.forEach(k=>{ if(k.squad===i) k.squad=j; else if(k.squad===j) k.squad=i; }); save(); render(); return; }
+  if(a==="wDel"){ state.wishes.splice(+el.dataset.i,1); save(); render(); return; }
+  if(a==="wAdd"){ const find=v=>{ const n=norm(v.split(" · ")[0]); const d=(v.split(" · ")[1]||""); return state.kids.find(k=>norm(k.fio)===n && (!d||fmtDate(k.dob)===d)); };
+    const ka=find(document.getElementById("nwA").value), kb=find(document.getElementById("nwB").value);
+    if(!ka||!kb||ka===kb){ toast("Выберите двух разных детей из подсказки"); return; }
+    state.wishes.push({id:uid(),type:document.getElementById("nwType").value,kids:[ka.id,kb.id]}); save(); render(); return; }
+  if(a==="sAcc"||a==="sDis"){ const sug=suggestWishes(); const s=sug[+el.dataset.i]; if(!s) return;
+    if(a==="sAcc"){ const t=document.getElementById("st-"+el.dataset.i).value; state.wishes.push({id:uid(),type:t,kids:s.kids}); }
+    else { state.dismissed=(state.dismissed||[]).concat(s.key); }
+    save(); render(); return; }
+});
+document.addEventListener("input",e=>{
+  if(e.target.id==="kidSearch"){ kidFilter=e.target.value; const pos=e.target.selectionStart; render(); const n=document.getElementById("kidSearch"); if(n){ n.focus(); try{n.setSelectionRange(pos,pos);}catch(_){} } }
+});
+document.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.f){ const tr=t.closest("tr[data-kid]"); const k=kidById(tr.dataset.kid); const f=t.dataset.f;
+    if(f==="squad"){ k.squad=t.value===""?null:+t.value; k.room=null; k.locked=k.squad!==null; }
+    else k[f]=t.value;
+    if(f==="fio" && !k.sex) k.sex=guessSex(k.fio);
+    save(); render(); return; }
+  if(t.dataset.kf){ const k=kidById(selectedKid); if(!k) return; const f=t.dataset.kf;
+    if(f==="squad"){ k.squad=t.value===""?null:+t.value; k.room=null; k.locked=k.squad!==null; }
+    else if(f==="room"){ k.room=t.value===""?null:+t.value; if(k.room!==null) k.locked=true; }
+    else if(f==="locked"||f==="placeholder"){ k[f]=t.checked; }
+    else k[f]=t.value;
+    if(f==="fio" && !k.sex) k.sex=guessSex(k.fio);
+    save(); openKid(k.id); return; }
+  if(t.dataset.sf){ const i=+t.closest("[data-sq]").dataset.sq; const s=state.squads[i];
+    if(t.dataset.sf==="rooms"){ const sizes=t.value.split(/[,;\s]+/).map(x=>parseInt(x,10)).filter(x=>x>0&&x<100); if(!sizes.length){ toast("Укажите места через запятую, например 6, 6, 5"); render(); return; }
+      s.rooms=sizes.map(size=>({size})); state.kids.forEach(k=>{ if(k.squad===i && k.room!==null && k.room>=sizes.length){ k.room=null; } }); }
+    else if(t.dataset.sf==="free") s.free=Math.max(0,parseInt(t.value,10)||0);
+    else s.name=t.value||s.name;
+    save(); render(); return; }
+  if(t.id==="setName"){ state.name=t.value||"Смена"; save(); render(); }
+  if(t.id==="setRef"){ state.refDate=t.value||todayIso(); save(); render(); }
+  if(t.id==="setOrder"){ state.order=t.value; save(); render(); }
+});
+/* drag and drop */
+document.addEventListener("dragstart",e=>{ const c=e.target.closest&&e.target.closest(".chip"); if(!c) return; e.dataTransfer.setData("text/plain",c.dataset.kid); e.dataTransfer.effectAllowed="move"; });
+document.addEventListener("dragover",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); document.querySelectorAll(".drop").forEach(x=>x!==z&&x.classList.remove("drop")); z.classList.add("drop"); });
+document.addEventListener("dragleave",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(z && !z.contains(e.relatedTarget)) z.classList.remove("drop"); });
+document.addEventListener("drop",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); const k=kidById(e.dataTransfer.getData("text/plain")); if(!k) return;
+  if(z.dataset.drop==="pool"){ k.squad=null; k.room=null; k.locked=false; }
+  else { k.squad=+z.dataset.sq; k.room=z.dataset.room===""?null:+z.dataset.room; k.locked=true; }
+  save(); render(); });
+
+/* ============ boot ============ */
+state = load() || exampleState();
+try{ const t=localStorage.getItem(LS_KEY+":tab"); if(t && ["board","kids","squads","wishes","help"].includes(t)) tab=t; }catch(_){}
+if(state.example && !state.kids.some(k=>k.squad!==null)){ autoAllocate(true); }
+render();
+</script>
+
+</body>
+</html>

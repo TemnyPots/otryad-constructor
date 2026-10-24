@@ -1,0 +1,44 @@
+{
+  "name": "otryad-constructor",
+  "productName": "Отрядный конструктор",
+  "version": "1.0.0",
+  "description": "Распределение детей по отрядам и комнатам лагеря: загрузка списков из Excel, автораспределение по возрасту, полу и пожеланиям, выгрузка в Excel.",
+  "main": "main.js",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "xlsx-js-style": "1.2.0"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "ru.otryad.constructor",
+    "productName": "Отрядный конструктор",
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "node_modules/xlsx-js-style/dist/xlsx.bundle.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Otryad-Constructor-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Otryad-Constructor-${version}-portable.${ext}"
+    }
+  }
+}
