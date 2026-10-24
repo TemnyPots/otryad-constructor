@@ -1,7 +1,7 @@
 {
   "name": "otryad-constructor",
   "productName": "Отрядный конструктор",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Распределение детей по отрядам и комнатам лагеря: загрузка списков из Excel, автораспределение по возрасту, полу и пожеланиям, выгрузка в Excel.",
   "main": "main.js",
   "license": "UNLICENSED",
@@ -19,6 +19,7 @@
   },
   "build": {
     "appId": "ru.otryad.constructor",
+    "afterPack": "build/afterPack.js",
     "productName": "Отрядный конструктор",
     "copyright": "© 2026 TemnyPots",
     "directories": {
@@ -63,7 +64,7 @@
         { "target": "dmg", "arch": ["universal"] },
         { "target": "zip", "arch": ["universal"] }
       ],
-      "identity": "-",
+      "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "artifactName": "Otryad-Constructor-${version}-mac.${ext}"

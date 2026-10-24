@@ -61,7 +61,8 @@ jobs:
           APP=$(find dist -maxdepth 2 -name "*.app" | head -1)
           echo "$APP"
           codesign -dv "$APP" 2>&1 | head -5
-          codesign --verify --deep --strict "$APP" && echo "signature ok"
+          codesign --verify --deep --strict "$APP"
+          echo "signature ok"
           lipo -archs "$APP/Contents/MacOS/"*
 
       - name: Сохранить dmg как артефакт сборки
