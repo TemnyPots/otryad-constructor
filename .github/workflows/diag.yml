@@ -33,46 +33,14 @@ jobs:
           EOF
           chmod +x run.sh
 
-      - name: 1. Голый Electron (пример по умолчанию)
-        run: ./run.sh bare "$EXE" || true
-
-      - name: 2. Electron с нашим кодом
-        run: ./run.sh ourcode "$EXE" . || true
-
-      - name: 3. Упаковка arm64 без подписи
+      - name: 8. Латинское имя + русское отображаемое имя, универсальная сборка
         run: |
-          SKIP_ADHOC_SIGN=1 npx electron-builder --mac dir --arm64 --publish never || true
-          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
-          ./run.sh packed-unsigned "$APP/Contents/MacOS/Отрядный конструктор" || true
-          rm -rf dist
-
-      - name: 4. Упаковка arm64 с ad-hoc подписью
-        run: |
-          npx electron-builder --mac dir --arm64 --publish never || true
-          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
-          ./run.sh packed-signed "$APP/Contents/MacOS/Отрядный конструктор" || true
-          rm -rf dist
-
-      - name: 5. Упаковка с латинским именем исполняемого файла
-        run: |
-          npx electron-builder --mac dir --arm64 --publish never -c.mac.executableName=OtryadConstructor || true
+          npx electron-builder --mac dir --universal --publish never -c.productName="Otryad Constructor" -c.mac.extendInfo.CFBundleDisplayName="Отрядный конструктор" || true
           APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; ls "$APP/Contents/MacOS/"
-          ./run.sh ascii-exe "$APP/Contents/MacOS/OtryadConstructor" || true
-          rm -rf dist
-
-      - name: 6. Упаковка без asar
-        run: |
-          npx electron-builder --mac dir --arm64 --publish never -c.asar=false || true
-          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"
-          ./run.sh no-asar "$APP/Contents/MacOS/Отрядный конструктор" || true
-          rm -rf dist
-
-      - name: 7. Латинское название приложения целиком
-        run: |
-          npx electron-builder --mac dir --arm64 --publish never -c.productName=OtryadConstructor || true
-          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; ls "$APP/Contents/MacOS/"
-          ./run.sh ascii-product "$APP/Contents/MacOS/OtryadConstructor" || true
-          rm -rf dist
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP/Contents/Info.plist"
+          codesign --verify --deep --strict "$APP" && echo "signature ok"
+          EXE="$APP/Contents/MacOS/$(ls "$APP/Contents/MacOS/" | head -1)"
+          ./run.sh final "$EXE" || true
       - name: Отчёты о сбоях
         if: always()
         run: |
