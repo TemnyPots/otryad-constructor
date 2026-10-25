@@ -53,10 +53,30 @@ jobs:
           ./run.sh packed-signed "$APP/Contents/MacOS/Отрядный конструктор" || true
           rm -rf dist
 
+      - name: 5. Упаковка с латинским именем исполняемого файла
+        run: |
+          npx electron-builder --mac dir --arm64 --publish never -c.mac.executableName=OtryadConstructor || true
+          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; ls "$APP/Contents/MacOS/"
+          ./run.sh ascii-exe "$APP/Contents/MacOS/OtryadConstructor" || true
+          rm -rf dist
+
+      - name: 6. Упаковка без asar
+        run: |
+          npx electron-builder --mac dir --arm64 --publish never -c.asar=false || true
+          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"
+          ./run.sh no-asar "$APP/Contents/MacOS/Отрядный конструктор" || true
+          rm -rf dist
+
+      - name: 7. Латинское название приложения целиком
+        run: |
+          npx electron-builder --mac dir --arm64 --publish never -c.productName=OtryadConstructor || true
+          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; ls "$APP/Contents/MacOS/"
+          ./run.sh ascii-product "$APP/Contents/MacOS/OtryadConstructor" || true
+          rm -rf dist
       - name: Отчёты о сбоях
         if: always()
         run: |
-          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -4); do
+          ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -2 | while IFS= read -r f; do
             echo "=== $f"
             python3 - "$f" <<'EOF'
           import json, sys
