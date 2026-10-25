@@ -48,7 +48,7 @@ const isMac = process.platform === "darwin";
 Menu.setApplicationMenu(
   Menu.buildFromTemplate([
     // macOS takes the first menu as the app menu
-    ...(isMac ? [{ role: "appMenu", label: app.name }] : []),
+    ...(isMac ? [{ role: "appMenu", label: "Отрядный конструктор" }] : []),
     {
       label: "Файл",
       submenu: [{ role: "reload", label: "Обновить окно" }, ...(isMac ? [] : [{ type: "separator" }, { role: "quit", label: "Выход" }])],

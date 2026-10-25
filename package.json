@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win --publish never",
-    "dist:mac": "electron-builder --mac --publish never"
+    "dist:mac": "electron-builder --mac --publish never -c.productName=\"Otryad Constructor\""
   },
   "dependencies": {
     "xlsx-js-style": "1.2.0"
@@ -67,7 +67,10 @@
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "artifactName": "Otryad-Constructor-${version}-mac.${ext}"
+      "artifactName": "Otryad-Constructor-${version}-mac.${ext}",
+      "extendInfo": {
+        "CFBundleDisplayName": "Отрядный конструктор"
+      }
     },
     "dmg": {
       "title": "Отрядный конструктор ${version}"

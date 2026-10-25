@@ -69,7 +69,7 @@ jobs:
         run: |
           sw_vers
           APP=$(find dist -maxdepth 2 -name "*.app" | head -1)
-          "$APP/Contents/MacOS/Отрядный конструктор" > smoke.log 2>&1 &
+          "$APP/Contents/MacOS/$(ls "$APP/Contents/MacOS/" | head -1)" > smoke.log 2>&1 &
           PID=$!
           sleep 25
           if kill -0 $PID 2>/dev/null; then
