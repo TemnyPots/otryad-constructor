@@ -5,6 +5,7 @@ const path = require("path");
 
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
+  if (process.env.SKIP_ADHOC_SIGN) return;
   // universal build: the x64/arm64 halves must stay identical to be merged, sign only the merged app
   if (/-temp$/.test(context.appOutDir)) return;
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);

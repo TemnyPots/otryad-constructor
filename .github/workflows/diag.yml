@@ -14,6 +14,11 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - name: Скачать Electron
+        run: |
+          node node_modules/electron/install.js || true
+          node -e 'console.log("EXE=" + require("electron"))' | tee -a "$GITHUB_ENV"
+          ls -la "$(node -e 'process.stdout.write(require("electron"))')"
 
       - name: Помощник запуска
         run: |
@@ -29,21 +34,21 @@ jobs:
           chmod +x run.sh
 
       - name: 1. Голый Electron (пример по умолчанию)
-        run: ./run.sh bare node_modules/electron/dist/Electron.app/Contents/MacOS/Electron || true
+        run: ./run.sh bare "$EXE" || true
 
       - name: 2. Electron с нашим кодом
-        run: ./run.sh ourcode node_modules/electron/dist/Electron.app/Contents/MacOS/Electron . || true
+        run: ./run.sh ourcode "$EXE" . || true
 
       - name: 3. Упаковка arm64 без подписи
         run: |
-          npx electron-builder --mac dir --arm64 -c.afterPack=null -c.mac.identity=null --publish never
+          SKIP_ADHOC_SIGN=1 npx electron-builder --mac dir --arm64 --publish never || true
           APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
           ./run.sh packed-unsigned "$APP/Contents/MacOS/Отрядный конструктор" || true
           rm -rf dist
 
       - name: 4. Упаковка arm64 с ad-hoc подписью
         run: |
-          npx electron-builder --mac dir --arm64 -c.mac.identity=null --publish never
+          npx electron-builder --mac dir --arm64 --publish never || true
           APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
           ./run.sh packed-signed "$APP/Contents/MacOS/Отрядный конструктор" || true
           rm -rf dist
