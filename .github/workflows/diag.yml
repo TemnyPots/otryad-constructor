@@ -1,0 +1,71 @@
+name: Диагностика запуска на Mac
+
+on:
+  push:
+    branches: [diag]
+  workflow_dispatch:
+
+jobs:
+  mac-diag:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+
+      - name: Помощник запуска
+        run: |
+          cat > run.sh <<'EOF'
+          #!/bin/bash
+          # run.sh <label> <executable> [args...]: start, wait, report
+          label=$1; shift
+          "$@" > "log-$label.txt" 2>&1 &
+          pid=$!
+          sleep 20
+          if kill -0 $pid 2>/dev/null; then echo "RESULT $label: running"; kill $pid; else wait $pid; echo "RESULT $label: exited code=$?"; tail -20 "log-$label.txt"; fi
+          EOF
+          chmod +x run.sh
+
+      - name: 1. Голый Electron (пример по умолчанию)
+        run: ./run.sh bare node_modules/electron/dist/Electron.app/Contents/MacOS/Electron || true
+
+      - name: 2. Electron с нашим кодом
+        run: ./run.sh ourcode node_modules/electron/dist/Electron.app/Contents/MacOS/Electron . || true
+
+      - name: 3. Упаковка arm64 без подписи
+        run: |
+          npx electron-builder --mac dir --arm64 -c.afterPack=null -c.mac.identity=null --publish never
+          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
+          ./run.sh packed-unsigned "$APP/Contents/MacOS/Отрядный конструктор" || true
+          rm -rf dist
+
+      - name: 4. Упаковка arm64 с ad-hoc подписью
+        run: |
+          npx electron-builder --mac dir --arm64 -c.mac.identity=null --publish never
+          APP=$(find dist -maxdepth 2 -name "*.app" | head -1); echo "$APP"; codesign -dv "$APP" 2>&1 | grep -E "Signature|flags" || true
+          ./run.sh packed-signed "$APP/Contents/MacOS/Отрядный конструктор" || true
+          rm -rf dist
+
+      - name: Отчёты о сбоях
+        if: always()
+        run: |
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -4); do
+            echo "=== $f"
+            python3 - "$f" <<'EOF'
+          import json, sys
+          raw = open(sys.argv[1]).read()
+          head, body = raw.split("\n", 1)
+          d = json.loads(body)
+          print("proc:", d.get("procName"), "| exception:", d.get("exception"), "| termination:", d.get("termination", {}).get("indicator"))
+          for k in ("asi", "lastExceptionBacktrace"):
+              if k in d: print(k, json.dumps(d[k])[:800])
+          t = [x for x in d.get("threads", []) if x.get("triggered")]
+          imgs = d.get("usedImages", [])
+          if t:
+              for fr in t[0].get("frames", [])[:12]:
+                  img = imgs[fr["imageIndex"]]["name"] if fr.get("imageIndex") is not None and fr["imageIndex"] < len(imgs) else "?"
+                  print("  ", img, fr.get("symbol", ""), fr.get("imageOffset"))
+          EOF
+          done
