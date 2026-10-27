@@ -134,12 +134,13 @@ textarea{resize:vertical;min-height:60px}
 .hall-h h2{font-size:16px}
 .tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;align-items:start}
 .dtable{border:1px solid var(--line);border-left:6px solid var(--sq,var(--line));border-radius:8px;padding:8px;display:grid;gap:6px;background:var(--bg);min-width:0}
-.dtable.drop{outline:2px solid var(--accent)}
-.dtable.mix{background:var(--warn-soft)}
-.dtable.bad{border-color:var(--bad);background:var(--bad-soft)}
 .dtable select{font-size:12px;padding:3px 5px;width:100%}
-.sqkey{display:flex;flex-wrap:wrap;gap:6px}
-.sqkey span{background:var(--bg);border:1px solid var(--line);border-left:6px solid var(--sq);border-radius:6px;padding:3px 8px;font-size:12.5px}
+.seat{min-width:28px;height:22px;padding:0 5px;border-radius:6px;display:inline-grid;place-items:center;font-size:12.5px;background:var(--surface);border:1px solid var(--sq)}
+.dg-row{display:grid;grid-template-columns:12px minmax(140px,1fr) 90px minmax(160px,2fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.dg-row:last-child{border-bottom:0}
+.dg-row .sw{width:12px;height:36px;border-radius:4px;display:block}
+.dg-info{font-size:13px}
+@media (max-width:720px){.dg-row{grid-template-columns:12px 1fr 80px}.dg-row .dg-info{grid-column:2/4}.dg-row .btn{grid-column:2/4;justify-self:start}}
 
 /* tables */
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
@@ -271,7 +272,7 @@ function exampleState(){
              {id:uid(),name:"3 отряд",rooms:[6,6,6].map(size=>({size})),free:0} ]};
   return st;
 }
-function mkKid(o){ const k=Object.assign({id:uid(),fio:"",sex:"",dob:"",parent:"",phone:"",address:"",district:"",comment:"",category:"",source:"",placeholder:false,squad:null,room:null,locked:false,table:null,tableLocked:false},o); if(!k.sex && !k.placeholder) k.sex=guessSex(k.fio); return k; }
+function mkKid(o){ const k=Object.assign({id:uid(),fio:"",sex:"",dob:"",parent:"",phone:"",address:"",district:"",comment:"",category:"",source:"",placeholder:false,squad:null,room:null,locked:false},o); if(!k.sex && !k.placeholder) k.sex=guessSex(k.fio); return k; }
 
 /* ============ import ============ */
 const COLS = [
@@ -543,45 +544,55 @@ function issues(){
 function kidHasIssue(k){ return state.wishes.some(w=>w.kids.includes(k.id) && wishOk(w)===false); }
 
 /* ============ dining ============ */
-// Tables point at a squad by id (squads can be reordered), kids point at a table by id.
+// The dining room works with squad names and head counts only, not with the kid list.
+// A table points at a dining squad by id; seat numbers 1..N follow from the order of that squad's tables.
 const HALLS=[["Основной",30],["Кемптон",28],["Веранда",16]];
-function defaultDining(){ return {halls:HALLS.map(([name,n])=>({id:uid(),name,tables:Array.from({length:n},()=>({id:uid(),seats:6,squad:null,pinned:false}))}))}; }
-function ensureDining(){ if(!state.dining||!Array.isArray(state.dining.halls)) state.dining=defaultDining(); return state.dining; }
+function defaultDining(){ return {groups:[], halls:HALLS.map(([name,n])=>({id:uid(),name,tables:Array.from({length:n},()=>({id:uid(),seats:6,group:null,pinned:false}))}))}; }
+function ensureDining(){ if(!state.dining||!Array.isArray(state.dining.halls)) state.dining=defaultDining(); if(!Array.isArray(state.dining.groups)) state.dining.groups=[]; return state.dining; }
 function allTables(){ return state.dining.halls.flatMap((h,hi)=>h.tables.map((t,ti)=>({t,h,hi,ti}))); }
-function squadIdx(id){ return id? state.squads.findIndex(s=>s.id===id) : -1; }
-function sqColor(i){ return i<0? "var(--line)" : `hsl(${(i*47)%360} 55% 50%)`; }
-function seatOrder(a,b){ return (a.room??99)-(b.room??99) || ((a.dob||"9")<(b.dob||"9")?-1:1); }
-function kidsAtTables(){ const at=new Map(allTables().map(x=>[x.t.id,[]])); state.kids.forEach(k=>{ if(k.table && at.has(k.table)) at.get(k.table).push(k); }); return at; }
+function groupIdx(id){ return id? state.dining.groups.findIndex(g=>g.id===id) : -1; }
+function sqColor(i){ return i<0? "var(--line)" : `hsl(${Math.round(i*137.5)%360} 55% 50%)`; }
+// byT: table id -> {g, from, to}; byG: squad id -> {seated, tables}
+function seatPlan(){
+  const T=allTables(), byT=new Map(), byG=new Map();
+  state.dining.groups.forEach(g=>{ let n=0; const ts=T.filter(x=>x.t.group===g.id);
+    ts.forEach(x=>{ const k=Math.max(0,Math.min(x.t.seats,g.count-n)); byT.set(x.t.id,{g,from:n+1,to:n+k}); n+=k; });
+    byG.set(g.id,{seated:n,tables:ts}); });
+  return {byT,byG};
+}
+function seatRange(p){ return !p||p.to<p.from? "" : p.to===p.from? String(p.from) : `${p.from}–${p.to}`; }
+function tablesText(ts){
+  return state.dining.halls.map((hl,hi)=>{ const n=ts.filter(x=>x.hi===hi).map(x=>x.ti+1); if(!n.length) return "";
+    return `${hl.name} ${n.length>1&&n[n.length-1]-n[0]===n.length-1?`${n[0]}–${n[n.length-1]}`:n.join(", ")}`; }).filter(Boolean).join("; ");
+}
+function groupsFromSquads(){
+  state.dining.groups=state.squads.map((s,i)=>({id:uid(),name:s.name,count:state.kids.filter(k=>k.squad===i).length||capOf(s)}));
+  allTables().forEach(({t})=>{ t.group=null; t.pinned=false; });
+}
 
-// Each squad gets consecutive tables, in one hall when it fits; roommates sit together.
+// Each squad gets consecutive tables, in one hall when it fits.
 function autoSeat(){
-  const D=ensureDining(), S=state.squads, kids=state.kids, notes=[];
-  if(!kids.some(k=>k.squad!==null)){ toast("Сначала распределите детей по отрядам"); return; }
-  const T=allTables(); const sqIds=new Set(S.map(s=>s.id)); const tIds=new Set(T.map(x=>x.t.id));
-  T.forEach(({t})=>{ if(!t.pinned || !sqIds.has(t.squad)){ t.squad=null; t.pinned=false; } });
-  kids.forEach(k=>{ if(!k.tableLocked || !tIds.has(k.table) || k.squad===null){ k.table=null; k.tableLocked=false; } });
-  const isFree=x=>x.t.squad===null;
-  const occ=id=>kids.filter(k=>k.table===id).length;
-  S.forEach((s,i)=>{
-    const members=kids.filter(k=>k.squad===i); if(!members.length) return;
-    const mine=()=>T.filter(x=>x.t.squad===s.id);
-    const cap=()=>sum(mine().map(x=>Math.max(0,x.t.seats-occ(x.t.id))));
-    const need=members.filter(k=>!k.table).length;
-    while(cap()<need){
+  const D=ensureDining(), G=D.groups, notes=[];
+  if(!G.length){ toast("Сначала добавьте отряды"); return; }
+  const T=allTables(); const gIds=new Set(G.map(g=>g.id));
+  T.forEach(({t})=>{ if(!t.pinned || !gIds.has(t.group)){ t.group=null; t.pinned=false; } });
+  const isFree=x=>x.t.group===null;
+  G.forEach(g=>{
+    const mine=()=>T.filter(x=>x.t.group===g.id);
+    const cap=()=>sum(mine().map(x=>x.t.seats));
+    while(cap()<g.count){
       const m=mine(); let next=null;
       if(m.length){ const last=m[m.length-1]; next=T.find(x=>isFree(x)&&x.hi===last.hi&&x.ti>last.ti) || T.find(x=>isFree(x)&&x.hi===last.hi); }
       if(!next){
-        const rest=need-cap(); const hallFree=hi=>sum(T.filter(x=>x.hi===hi&&isFree(x)).map(x=>x.t.seats));
+        const rest=g.count-cap(); const hallFree=hi=>sum(T.filter(x=>x.hi===hi&&isFree(x)).map(x=>x.t.seats));
         const hi=D.halls.findIndex((_,hi)=>hallFree(hi)>=rest);
         next=T.find(x=>isFree(x)&&(hi<0||x.hi===hi));
       }
       if(!next) break;
-      next.t.squad=s.id;
+      next.t.group=g.id;
     }
-    const queue=members.filter(k=>!k.table).sort(seatOrder);
-    for(const x of mine()){ let left=x.t.seats-occ(x.t.id); while(left>0 && queue.length){ queue.shift().table=x.t.id; left--; } }
-    if(queue.length) notes.push(`${s.name}: не хватило мест за столами для ${queue.length} чел.`);
-    if(new Set(mine().map(x=>x.hi)).size>1) notes.push(`${s.name}: отряд сидит в разных залах`);
+    if(cap()<g.count) notes.push(`${g.name}: не хватило мест для ${g.count-cap()} чел.`);
+    if(new Set(mine().map(x=>x.hi)).size>1) notes.push(`${g.name}: отряд сидит в разных залах`);
   });
   const freeT=T.filter(isFree).length; if(freeT) notes.push(`Свободных столов осталось: ${freeT}`);
   diningReport={notes};
@@ -712,37 +723,37 @@ function renderWishes(){
     <div class="panel"><h2>Пожелания <span class="muted num">(${state.wishes.length})</span></h2>${wl||'<p class="muted">Пока нет.</p>'}</div>`;
 }
 function renderDining(){
-  const D=ensureDining(), S=state.squads, kids=state.kids;
-  const T=allTables(); const at=kidsAtTables();
-  const seats=sum(T.map(x=>x.t.seats)); const seated=sum([...at.values()].map(a=>a.length));
-  const inSquads=kids.filter(k=>k.squad!==null).length;
-  const unseated=kids.filter(k=>k.squad!==null && !(k.table && at.has(k.table))).sort((a,b)=>a.squad-b.squad||seatOrder(a,b));
+  const D=ensureDining(), G=D.groups, T=allTables(), P=seatPlan();
+  const seats=sum(T.map(x=>x.t.seats)), kidsN=sum(G.map(g=>g.count)), seated=sum([...P.byG.values()].map(v=>v.seated));
   let h=`<div class="summary">
     <div class="stat"><div class="v num">${T.length}</div><div class="l">столов в ${D.halls.length} залах</div></div>
     <div class="stat"><div class="v num">${seats}</div><div class="l">посадочных мест</div></div>
-    <div class="stat ${inSquads&&seated>=inSquads?"ok":unseated.length?"bad":""}"><div class="v num">${seated}/${inSquads}</div><div class="l">детей рассажено</div></div>
+    <div class="stat ${kidsN&&seated>=kidsN?"ok":seated<kidsN?"bad":""}"><div class="v num">${seated}/${kidsN}</div><div class="l">детей посажено</div></div>
     <div class="stat"><div class="v num">${seats-seated}</div><div class="l">свободных мест</div></div>
-  </div>
-  <div class="panel"><div class="row" style="justify-content:space-between"><h2>Столовая</h2>
-    <div class="row"><button class="btn sm primary" data-act="dAuto">Рассадить автоматически</button><button class="btn sm" data-act="dExport">Скачать рассадку</button><button class="btn sm danger" data-act="dClear">Очистить рассадку</button></div></div>
-    <p class="help">Каждый отряд получает столы подряд, по возможности в одном зале; соседи по комнате сидят за одним столом. Чтобы отдать стол конкретному отряду, выберите отряд в карточке стола: такой стол закрепляется. Детей можно перетаскивать между столами. После нового распределения по отрядам нажмите «Рассадить автоматически» ещё раз.</p></div>`;
+  </div>`;
+  const rows=G.map((g,i)=>{ const v=P.byG.get(g.id); const short=g.count-v.seated;
+    return `<div class="dg-row" data-g="${g.id}"><i class="sw" style="background:${sqColor(i)}"></i>
+      <label class="field"><span>Отряд</span><input type="text" id="gn-${g.id}" data-gf="name" value="${esc(g.name)}"></label>
+      <label class="field"><span>Детей</span><input type="number" min="0" max="999" id="gc-${g.id}" data-gf="count" value="${g.count}"></label>
+      <div class="dg-info">${v.tables.length?`${esc(tablesText(v.tables))} <span class="muted">· места 1–${v.seated}</span>`:'<span class="muted">столов пока нет</span>'}${short>0&&v.tables.length?` <span class="pill" style="background:var(--bad-soft);color:var(--bad)">не хватает ${short}</span>`:""}</div>
+      <button class="btn sm danger" data-act="gDel" data-g="${g.id}">Удалить</button></div>`; }).join("");
+  h+=`<div class="panel"><div class="row" style="justify-content:space-between"><h2>Отряды в столовой</h2>
+      <div class="row"><button class="btn sm" data-act="gAdd">Добавить отряд</button><button class="btn sm" data-act="gFromSquads">Взять из «Отряды и комнаты»</button></div></div>
+    <p class="help">Задайте название отряда и сколько в нём детей. За столами вместо имён стоят номера мест: 1, 2, 3 и дальше по порядку столов отряда.</p>
+    <div>${rows||'<p class="muted">Отрядов пока нет. Добавьте отряд или возьмите названия и численность из вкладки «Отряды и комнаты».</p>'}</div>
+    <div class="row" style="justify-content:space-between;border-top:1px solid var(--line);padding-top:12px"><span class="help">Каждый отряд получает столы подряд, по возможности в одном зале. Чтобы отдать стол конкретному отряду, выберите отряд в карточке стола: такой стол закрепляется.</span>
+      <div class="row"><button class="btn sm primary" data-act="dAuto">Рассадить автоматически</button><button class="btn sm" data-act="dExport">Скачать рассадку в Excel</button><button class="btn sm danger" data-act="dClear">Очистить рассадку</button></div></div></div>`;
   if(diningReport && diningReport.notes.length) h+=`<div class="status"><b>Что получилось при рассадке</b>${diningReport.notes.map(n=>`<span>• ${esc(n)}</span>`).join("")}</div>`;
-  const key=S.map((s,i)=>{ const ts=T.filter(x=>x.t.squad===s.id); if(!ts.length) return "";
-    const byHall=D.halls.map((hl,hi)=>{ const n=ts.filter(x=>x.hi===hi).map(x=>x.ti+1); return n.length? `${hl.name} ${n.length>1&&n[n.length-1]-n[0]===n.length-1?`${n[0]}–${n[n.length-1]}`:n.join(", ")}` : ""; }).filter(Boolean).join("; ");
-    return `<span style="--sq:${sqColor(i)}"><b>${esc(s.name)}</b> · ${esc(byHall)}</span>`; }).join("");
-  if(key) h+=`<div class="sqkey">${key}</div>`;
-  h+=`<div class="pool" data-drop="dpool"><b>Без места в столовой <span class="num muted">(${unseated.length})</span></b>
-    <div class="beds">${unseated.map(chip).join("")||'<span class="muted">'+(inSquads?"Все дети за столами. Перетащите ребёнка сюда, чтобы убрать его из-за стола.":"Сначала распределите детей по отрядам.")+'</span>'}</div></div>`;
   h+=D.halls.map((hl,hi)=>{
-    const hs=sum(hl.tables.map(t=>t.seats)), ho=sum(hl.tables.map(t=>at.get(t.id).length));
+    const hs=sum(hl.tables.map(t=>t.seats)); let ho=0;
     const cards=hl.tables.map((t,ti)=>{
-      const occ=at.get(t.id).sort(seatOrder); const si=squadIdx(t.squad);
-      const mix=new Set(occ.map(k=>k.squad)).size>1 || (si>=0 && occ.some(k=>k.squad!==si));
-      const opts=`<option value="">${si>=0?"отряд: авто":"без отряда"}</option>`+S.map((s,j)=>`<option value="${s.id}" ${t.squad===s.id?"selected":""}>${esc(s.name)}${t.squad===s.id&&t.pinned?" ●":""}</option>`).join("");
-      return `<div class="dtable ${occ.length>t.seats?"bad":mix?"mix":""}" style="--sq:${sqColor(si)}" data-drop="table" data-table="${t.id}">
-        <div class="room-h"><b>Стол ${ti+1}</b><span class="rctl"><button class="ib" data-act="tMinus" data-table="${t.id}" title="Убрать место" aria-label="Убрать место за столом ${ti+1}">−</button><span class="num" title="Занято / мест">${occ.length}/${t.seats}</span><button class="ib" data-act="tPlus" data-table="${t.id}" title="Добавить место" aria-label="Добавить место за столом ${ti+1}">+</button><button class="ib del" data-act="tDel" data-table="${t.id}" title="Удалить стол" aria-label="Удалить стол ${ti+1}">×</button></span></div>
-        <select id="tsq-${t.id}" data-tsq="${t.id}" aria-label="Отряд за столом ${ti+1}">${opts}</select>
-        <div class="beds">${occ.map(chip).join("")}${'<span class="bed-empty" title="Свободное место"></span>'.repeat(Math.max(0,t.seats-occ.length))}</div></div>`;
+      const p=P.byT.get(t.id); const gi=groupIdx(t.group); const used=p? p.to-p.from+1 : 0; ho+=used;
+      const opts=`<option value="">без отряда</option>`+G.map(g=>`<option value="${g.id}" ${t.group===g.id?"selected":""}>${esc(g.name)}${t.group===g.id&&t.pinned?" ●":""}</option>`).join("");
+      const boxes=Array.from({length:t.seats},(_,s)=> s<used? `<span class="seat num">${p.from+s}</span>` : '<span class="bed-empty" title="Свободное место"></span>').join("");
+      return `<div class="dtable" style="--sq:${sqColor(gi)}">
+        <div class="room-h"><b>Стол ${ti+1}</b><span class="rctl"><button class="ib" data-act="tMinus" data-table="${t.id}" title="Убрать место" aria-label="Убрать место за столом ${ti+1}">−</button><span class="num" title="Занято / мест">${used}/${t.seats}</span><button class="ib" data-act="tPlus" data-table="${t.id}" title="Добавить место" aria-label="Добавить место за столом ${ti+1}">+</button><button class="ib del" data-act="tDel" data-table="${t.id}" title="Удалить стол" aria-label="Удалить стол ${ti+1}">×</button></span></div>
+        <select id="tgr-${t.id}" data-tgr="${t.id}" aria-label="Отряд за столом ${ti+1}">${opts}</select>
+        <div class="beds">${boxes}</div></div>`;
     }).join("");
     return `<section class="panel"><div class="hall-h"><h2>${esc(hl.name)}</h2><span class="muted num">${hl.tables.length} столов · ${hs} мест · занято ${ho}</span></div>
       <div class="tables">${cards}</div>
@@ -758,7 +769,7 @@ function renderHelp(){
   <p><b>4. Нажмите «Распределить автоматически».</b> Дети идут по возрасту от старших к младшим, группы по пожеланиям держатся вместе, комнаты получаются только для мальчиков или только для девочек. Родные братья или сестры одного пола в одном отряде по возможности селятся в одну комнату.</p>
   <p><b>5. Поправьте вручную.</b> Перетащите ребёнка в другую комнату или нажмите на него и выберите отряд и комнату. Переставленный вручную ребёнок закрепляется (●): при повторном автораспределении он останется на месте. Бронь и пустые путёвки удобно заранее закрепить в нужном отряде.</p>
   <p><b>Комнаты прямо на доске.</b> У каждой комнаты есть кнопки <span class="kbd">−</span> и <span class="kbd">+</span> (убрать или добавить место) и <span class="kbd">×</span> (удалить комнату: её дети переходят в «Без комнаты» этого отряда). Внизу отряда есть кнопка «Добавить комнату», в шапке отряда настраивается, сколько мест оставить свободными. После изменений нажмите «Распределить автоматически» или поправьте детей вручную.</p>
-  <p><b>Столовая.</b> Три зала: Основной (30 столов), Кемптон (28) и Веранда (16), за каждым столом 6 мест. «Рассадить автоматически» даёт каждому отряду столы подряд, по возможности в одном зале, соседи по комнате сидят вместе. В карточке стола можно выбрать отряд (стол закрепится за ним), кнопками <span class="kbd">−</span> <span class="kbd">+</span> <span class="kbd">×</span> поменять число мест или удалить стол, внизу зала добавить стол. Детей можно перетаскивать между столами. «Скачать рассадку» сохраняет Excel с листом на каждый зал.</p>
+  <p><b>Столовая.</b> Три зала: Основной (30 столов), Кемптон (28) и Веранда (16), за каждым столом 6 мест. Вверху вкладки задайте отряды: название и сколько детей (или возьмите их из вкладки «Отряды и комнаты»). «Рассадить автоматически» даёт каждому отряду столы подряд, по возможности в одном зале; за столами стоят номера мест 1, 2, 3 и дальше. В карточке стола можно выбрать отряд (стол закрепится за ним), кнопками <span class="kbd">−</span> <span class="kbd">+</span> <span class="kbd">×</span> поменять число мест или удалить стол, внизу зала добавить стол. «Скачать рассадку в Excel» сохраняет файл с листом по отрядам и листом на каждый зал.</p>
   <p><b>6. Скачайте Excel.</b> Получится файл со сводкой и отдельным листом на каждый отряд в классическом формате: №, ФИО, дата рождения, родитель, телефон, адрес, район, комментарии, категория, комната. Если дети уже рассажены, добавится лист «Столовая».</p>
   <p><b>Сохранить проект</b> скачивает файл .json со всем состоянием, его можно открыть позже на любом компьютере. Кроме того, работа автоматически сохраняется в этом браузере.</p>
   <p class="muted">Данные детей обрабатываются только в вашем браузере и никуда не отправляются.</p>
@@ -839,24 +850,30 @@ async function exportXlsx(){
   });
   const un=state.kids.filter(k=>k.squad===null);
   if(un.length){ const rows=[HEAD]; un.forEach((k,n)=>rows.push(kidRow(k,n+1,""))); XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), safeSheetName("Не распределены",used)); }
-  if(state.kids.some(k=>k.table)) XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows(ensureDining().halls),DINING_COLW), safeSheetName("Столовая",used));
+  if(allTables().some(x=>x.t.group)) XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows(ensureDining().halls),DINING_COLW), safeSheetName("Столовая",used));
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   await saveFile(`${state.name||"Распределение"}.xlsx`.replace(/[\\\/:*?"<>|]/g," "), new Uint8Array(out));
 }
-const DINING_COLW=[90,45,110,45,60,330];
+const DINING_COLW=[90,45,130,45,60,110];
 function diningRows(halls){
-  const at=kidsAtTables(); const rows=[["Зал","Стол","Отряд","Мест","Занято","Дети"]];
+  const P=seatPlan(); const rows=[["Зал","Стол","Отряд","Мест","Занято","Номера мест"]];
   halls.forEach(h=>h.tables.forEach((t,ti)=>{
-    const occ=at.get(t.id).sort(seatOrder); const s=state.squads.find(s=>s.id===t.squad);
-    const sqName= s? s.name : [...new Set(occ.map(k=>(state.squads[k.squad]||{}).name).filter(Boolean))].join(", ");
-    rows.push([h.name, ti+1, sqName, t.seats, occ.length, occ.map(k=>k.placeholder?(k.fio||"Место"):k.fio).join("\n")]);
+    const p=P.byT.get(t.id); const g=state.dining.groups.find(g=>g.id===t.group);
+    rows.push([h.name, ti+1, g? g.name : "", t.seats, p? p.to-p.from+1 : 0, seatRange(p)]);
   }));
+  return rows;
+}
+function diningGroupRows(){
+  const P=seatPlan(); const rows=[["Отряд","Детей","Посажено","Не хватает мест","Столов","Столы"]];
+  state.dining.groups.forEach(g=>{ const v=P.byG.get(g.id); rows.push([g.name, g.count, v.seated, Math.max(0,g.count-v.seated)||"", v.tables.length, tablesText(v.tables)]); });
   return rows;
 }
 async function exportDining(){
   if(typeof XLSX==="undefined"){ toast("Библиотека Excel не загрузилась, обновите страницу"); return; }
+  const D=ensureDining(); if(!allTables().some(x=>x.t.group)){ toast("Сначала рассадите отряды"); return; }
   const wb=XLSX.utils.book_new(); const used=new Set();
-  ensureDining().halls.forEach(h=>XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows([h]),DINING_COLW), safeSheetName(h.name,used)));
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(diningGroupRows(),[130,60,80,110,60,330]), safeSheetName("Отряды",used));
+  D.halls.forEach(h=>XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows([h]),DINING_COLW), safeSheetName(h.name,used)));
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   await saveFile(`${state.name||"Смена"} — столовая.xlsx`.replace(/[\\\/:*?"<>|]/g," "), new Uint8Array(out));
 }
@@ -909,13 +926,17 @@ document.addEventListener("click",e=>{
   if(a==="sqUp"||a==="sqDown"){ const i=+el.dataset.i, j=a==="sqUp"?i-1:i+1; if(j<0||j>=state.squads.length) return; [state.squads[i],state.squads[j]]=[state.squads[j],state.squads[i]]; state.kids.forEach(k=>{ if(k.squad===i) k.squad=j; else if(k.squad===j) k.squad=i; }); save(); render(); return; }
   if(a==="dAuto"){ autoSeat(); return; }
   if(a==="dExport"){ exportDining(); return; }
-  if(a==="dClear"){ showModal(`<h2>Очистить рассадку?</h2><p class="help">Все дети встанут из-за столов, закрепление столов за отрядами снимется. Залы и столы останутся.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn danger" data-act="dClearYes">Очистить</button></div>`); return; }
-  if(a==="dClearYes"){ state.kids.forEach(k=>{ k.table=null; k.tableLocked=false; }); allTables().forEach(({t})=>{ t.squad=null; t.pinned=false; }); diningReport=null; save(); closeModal(); render(); return; }
+  if(a==="dClear"){ showModal(`<h2>Очистить рассадку?</h2><p class="help">Все столы освободятся, закрепление столов за отрядами снимется. Отряды, залы и столы останутся.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn danger" data-act="dClearYes">Очистить</button></div>`); return; }
+  if(a==="dClearYes"){ allTables().forEach(({t})=>{ t.group=null; t.pinned=false; }); diningReport=null; save(); closeModal(); render(); return; }
+  if(a==="gAdd"){ const G=ensureDining().groups; G.push({id:uid(),name:`${G.length+1} отряд`,count:25}); save(); render(); const inp=document.getElementById("gn-"+G[G.length-1].id); if(inp){ inp.focus(); inp.select(); } return; }
+  if(a==="gDel"){ const D=ensureDining(); D.groups=D.groups.filter(g=>g.id!==el.dataset.g); allTables().forEach(({t})=>{ if(t.group===el.dataset.g){ t.group=null; t.pinned=false; } }); save(); render(); return; }
+  if(a==="gFromSquads"){ if(!state.squads.length){ toast("На вкладке «Отряды и комнаты» отрядов пока нет"); return; }
+    if(!ensureDining().groups.length){ groupsFromSquads(); save(); render(); return; }
+    showModal(`<h2>Заменить отряды в столовой?</h2><p class="help">Отряды столовой заменятся отрядами из вкладки «Отряды и комнаты» с числом распределённых детей, рассадка сбросится.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn primary" data-act="gFromSquadsYes">Заменить</button></div>`); return; }
+  if(a==="gFromSquadsYes"){ groupsFromSquads(); diningReport=null; save(); closeModal(); render(); return; }
   if(a==="tPlus"||a==="tMinus"){ const x=allTables().find(x=>x.t.id===el.dataset.table); if(!x) return; x.t.seats=Math.max(1,Math.min(30,x.t.seats+(a==="tPlus"?1:-1))); save(); render(); return; }
   if(a==="tAdd"){ const hl=state.dining.halls[+el.dataset.hall]; hl.tables.push({id:uid(),seats:hl.tables.length?hl.tables[hl.tables.length-1].seats:6,squad:null,pinned:false}); save(); render(); toast(`${hl.name}: добавлен стол ${hl.tables.length}`); return; }
-  if(a==="tDel"){ const x=allTables().find(x=>x.t.id===el.dataset.table); if(!x) return; let moved=0;
-    state.kids.forEach(k=>{ if(k.table===x.t.id){ k.table=null; k.tableLocked=false; moved++; } });
-    x.h.tables.splice(x.ti,1); save(); render(); toast(moved?`Стол удалён. ${moved} чел. перенесены в «Без места в столовой»`:"Стол удалён"); return; }
+  if(a==="tDel"){ const x=allTables().find(x=>x.t.id===el.dataset.table); if(!x) return; x.h.tables.splice(x.ti,1); save(); render(); toast("Стол удалён"); return; }
   if(a==="wDel"){ state.wishes.splice(+el.dataset.i,1); save(); render(); return; }
   if(a==="wAdd"){ const find=v=>{ const n=norm(v.split(" · ")[0]); const d=(v.split(" · ")[1]||""); return state.kids.find(k=>norm(k.fio)===n && (!d||fmtDate(k.dob)===d)); };
     const ka=find(document.getElementById("nwA").value), kb=find(document.getElementById("nwB").value);
@@ -949,7 +970,10 @@ document.addEventListener("change",e=>{
     else if(t.dataset.sf==="free") s.free=Math.max(0,parseInt(t.value,10)||0);
     else s.name=t.value||s.name;
     save(); render(); return; }
-  if(t.dataset.tsq){ const x=allTables().find(x=>x.t.id===t.dataset.tsq); if(!x) return; x.t.squad=t.value||null; x.t.pinned=!!t.value; save(); render(); return; }
+  if(t.dataset.tgr){ const x=allTables().find(x=>x.t.id===t.dataset.tgr); if(!x) return; x.t.group=t.value||null; x.t.pinned=!!t.value; save(); render(); return; }
+  if(t.dataset.gf){ const g=ensureDining().groups.find(g=>g.id===t.closest("[data-g]").dataset.g); if(!g) return;
+    if(t.dataset.gf==="count") g.count=Math.max(0,Math.min(999,parseInt(t.value,10)||0)); else g.name=t.value.trim()||g.name;
+    save(); render(); return; }
   if(t.id==="setName"){ state.name=t.value||"Смена"; save(); render(); }
   if(t.id==="setRef"){ state.refDate=t.value||todayIso(); save(); render(); }
   if(t.id==="setOrder"){ state.order=t.value; save(); render(); }
@@ -959,9 +983,7 @@ document.addEventListener("dragstart",e=>{ const c=e.target.closest&&e.target.cl
 document.addEventListener("dragover",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); document.querySelectorAll(".drop").forEach(x=>x!==z&&x.classList.remove("drop")); z.classList.add("drop"); });
 document.addEventListener("dragleave",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(z && !z.contains(e.relatedTarget)) z.classList.remove("drop"); });
 document.addEventListener("drop",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); const k=kidById(e.dataTransfer.getData("text/plain")); if(!k) return;
-  if(z.dataset.drop==="table"){ k.table=z.dataset.table; k.tableLocked=true; }
-  else if(z.dataset.drop==="dpool"){ k.table=null; k.tableLocked=false; }
-  else if(z.dataset.drop==="pool"){ k.squad=null; k.room=null; k.locked=false; }
+  if(z.dataset.drop==="pool"){ k.squad=null; k.room=null; k.locked=false; }
   else { k.squad=+z.dataset.sq; k.room=z.dataset.room===""?null:+z.dataset.room; k.locked=true; }
   save(); render(); });
 
