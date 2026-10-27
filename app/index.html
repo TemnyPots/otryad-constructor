@@ -129,6 +129,18 @@ textarea{resize:vertical;min-height:60px}
 .legend span{display:inline-flex;gap:5px;align-items:center}
 .legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
 
+/* dining: halls with table cards; the left stripe is the squad colour */
+.hall-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.hall-h h2{font-size:16px}
+.tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;align-items:start}
+.dtable{border:1px solid var(--line);border-left:6px solid var(--sq,var(--line));border-radius:8px;padding:8px;display:grid;gap:6px;background:var(--bg);min-width:0}
+.dtable.drop{outline:2px solid var(--accent)}
+.dtable.mix{background:var(--warn-soft)}
+.dtable.bad{border-color:var(--bad);background:var(--bad-soft)}
+.dtable select{font-size:12px;padding:3px 5px;width:100%}
+.sqkey{display:flex;flex-wrap:wrap;gap:6px}
+.sqkey span{background:var(--bg);border:1px solid var(--line);border-left:6px solid var(--sq);border-radius:6px;padding:3px 8px;font-size:12.5px}
+
 /* tables */
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -185,6 +197,7 @@ tr.ph td{background:var(--unk-soft)}
     <button role="tab" data-tab="kids">Дети <span class="count" id="cKids">0</span></button>
     <button role="tab" data-tab="squads">Отряды и комнаты <span class="count" id="cSquads">0</span></button>
     <button role="tab" data-tab="wishes">Пожелания <span class="count" id="cWishes">0</span></button>
+    <button role="tab" data-tab="dining">Столовая <span class="count" id="cDining">0</span></button>
     <button role="tab" data-tab="help">Как пользоваться</button>
   </nav>
 </header>
@@ -200,11 +213,12 @@ let state = null;
 let tab = "board";
 let selectedKid = null;
 let lastReport = null;
+let diningReport = null;
 let kidFilter = "";
 const DEFAULT_COLW = [34,290,110,289,146,300,99,316,137,170];
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-function emptyState(){ return {name:"Новая смена", refDate: todayIso(), order:"old", kids:[], squads:[], wishes:[], dismissed:[], example:false}; }
+function emptyState(){ return {name:"Новая смена", refDate: todayIso(), order:"old", kids:[], squads:[], wishes:[], dismissed:[], example:false, dining:defaultDining()}; }
 function todayIso(){ const d=new Date(); return d.toISOString().slice(0,10); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }
 function load(){ try{ const s=localStorage.getItem(LS_KEY); if(s){ const o=JSON.parse(s); if(o && Array.isArray(o.kids)) return o; } }catch(e){} return null; }
@@ -257,7 +271,7 @@ function exampleState(){
              {id:uid(),name:"3 отряд",rooms:[6,6,6].map(size=>({size})),free:0} ]};
   return st;
 }
-function mkKid(o){ const k=Object.assign({id:uid(),fio:"",sex:"",dob:"",parent:"",phone:"",address:"",district:"",comment:"",category:"",source:"",placeholder:false,squad:null,room:null,locked:false},o); if(!k.sex && !k.placeholder) k.sex=guessSex(k.fio); return k; }
+function mkKid(o){ const k=Object.assign({id:uid(),fio:"",sex:"",dob:"",parent:"",phone:"",address:"",district:"",comment:"",category:"",source:"",placeholder:false,squad:null,room:null,locked:false,table:null,tableLocked:false},o); if(!k.sex && !k.placeholder) k.sex=guessSex(k.fio); return k; }
 
 /* ============ import ============ */
 const COLS = [
@@ -528,16 +542,63 @@ function issues(){
 }
 function kidHasIssue(k){ return state.wishes.some(w=>w.kids.includes(k.id) && wishOk(w)===false); }
 
+/* ============ dining ============ */
+// Tables point at a squad by id (squads can be reordered), kids point at a table by id.
+const HALLS=[["Основной",30],["Кемптон",28],["Веранда",16]];
+function defaultDining(){ return {halls:HALLS.map(([name,n])=>({id:uid(),name,tables:Array.from({length:n},()=>({id:uid(),seats:6,squad:null,pinned:false}))}))}; }
+function ensureDining(){ if(!state.dining||!Array.isArray(state.dining.halls)) state.dining=defaultDining(); return state.dining; }
+function allTables(){ return state.dining.halls.flatMap((h,hi)=>h.tables.map((t,ti)=>({t,h,hi,ti}))); }
+function squadIdx(id){ return id? state.squads.findIndex(s=>s.id===id) : -1; }
+function sqColor(i){ return i<0? "var(--line)" : `hsl(${(i*47)%360} 55% 50%)`; }
+function seatOrder(a,b){ return (a.room??99)-(b.room??99) || ((a.dob||"9")<(b.dob||"9")?-1:1); }
+function kidsAtTables(){ const at=new Map(allTables().map(x=>[x.t.id,[]])); state.kids.forEach(k=>{ if(k.table && at.has(k.table)) at.get(k.table).push(k); }); return at; }
+
+// Each squad gets consecutive tables, in one hall when it fits; roommates sit together.
+function autoSeat(){
+  const D=ensureDining(), S=state.squads, kids=state.kids, notes=[];
+  if(!kids.some(k=>k.squad!==null)){ toast("Сначала распределите детей по отрядам"); return; }
+  const T=allTables(); const sqIds=new Set(S.map(s=>s.id)); const tIds=new Set(T.map(x=>x.t.id));
+  T.forEach(({t})=>{ if(!t.pinned || !sqIds.has(t.squad)){ t.squad=null; t.pinned=false; } });
+  kids.forEach(k=>{ if(!k.tableLocked || !tIds.has(k.table) || k.squad===null){ k.table=null; k.tableLocked=false; } });
+  const isFree=x=>x.t.squad===null;
+  const occ=id=>kids.filter(k=>k.table===id).length;
+  S.forEach((s,i)=>{
+    const members=kids.filter(k=>k.squad===i); if(!members.length) return;
+    const mine=()=>T.filter(x=>x.t.squad===s.id);
+    const cap=()=>sum(mine().map(x=>Math.max(0,x.t.seats-occ(x.t.id))));
+    const need=members.filter(k=>!k.table).length;
+    while(cap()<need){
+      const m=mine(); let next=null;
+      if(m.length){ const last=m[m.length-1]; next=T.find(x=>isFree(x)&&x.hi===last.hi&&x.ti>last.ti) || T.find(x=>isFree(x)&&x.hi===last.hi); }
+      if(!next){
+        const rest=need-cap(); const hallFree=hi=>sum(T.filter(x=>x.hi===hi&&isFree(x)).map(x=>x.t.seats));
+        const hi=D.halls.findIndex((_,hi)=>hallFree(hi)>=rest);
+        next=T.find(x=>isFree(x)&&(hi<0||x.hi===hi));
+      }
+      if(!next) break;
+      next.t.squad=s.id;
+    }
+    const queue=members.filter(k=>!k.table).sort(seatOrder);
+    for(const x of mine()){ let left=x.t.seats-occ(x.t.id); while(left>0 && queue.length){ queue.shift().table=x.t.id; left--; } }
+    if(queue.length) notes.push(`${s.name}: не хватило мест за столами для ${queue.length} чел.`);
+    if(new Set(mine().map(x=>x.hi)).size>1) notes.push(`${s.name}: отряд сидит в разных залах`);
+  });
+  const freeT=T.filter(isFree).length; if(freeT) notes.push(`Свободных столов осталось: ${freeT}`);
+  diningReport={notes};
+  save(); render(); toast("Рассадка готова");
+}
+
 /* ============ render ============ */
 const $main=document.getElementById("main"), $layer=document.getElementById("layer");
 function render(){
   document.getElementById("cKids").textContent=state.kids.length;
   document.getElementById("cSquads").textContent=state.squads.length;
   document.getElementById("cWishes").textContent=state.wishes.length;
+  document.getElementById("cDining").textContent=sum(ensureDining().halls.map(h=>h.tables.length));
   document.getElementById("projTag").textContent=state.name + (state.example? " · пример":"");
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===tab)));
   const banner = state.example ? `<div class="banner"><span><b>Это пример</b> с выдуманными детьми, чтобы показать, как всё работает. Нажмите «Загрузить Excel» и выберите свои списки: пример заменится вашими данными.</span></div>` : "";
-  const fn={board:renderBoard,kids:renderKids,squads:renderSquads,wishes:renderWishes,help:renderHelp}[tab];
+  const fn={board:renderBoard,kids:renderKids,squads:renderSquads,wishes:renderWishes,dining:renderDining,help:renderHelp}[tab];
   $main.innerHTML=banner+fn();
 }
 function sexCounts(list){ return {b:list.filter(k=>k.sex==="М").length,g:list.filter(k=>k.sex==="Ж").length,u:list.filter(k=>k.sex!=="М"&&k.sex!=="Ж").length}; }
@@ -650,6 +711,45 @@ function renderWishes(){
     ${sl?`<div class="panel"><h2>Найдено в комментариях <span class="muted num">(${sug.length})</span></h2><p class="help">Конструктор нашёл в комментариях фамилии других детей из списка. Проверьте и примите нужные.</p>${sl}</div>`:""}
     <div class="panel"><h2>Пожелания <span class="muted num">(${state.wishes.length})</span></h2>${wl||'<p class="muted">Пока нет.</p>'}</div>`;
 }
+function renderDining(){
+  const D=ensureDining(), S=state.squads, kids=state.kids;
+  const T=allTables(); const at=kidsAtTables();
+  const seats=sum(T.map(x=>x.t.seats)); const seated=sum([...at.values()].map(a=>a.length));
+  const inSquads=kids.filter(k=>k.squad!==null).length;
+  const unseated=kids.filter(k=>k.squad!==null && !(k.table && at.has(k.table))).sort((a,b)=>a.squad-b.squad||seatOrder(a,b));
+  let h=`<div class="summary">
+    <div class="stat"><div class="v num">${T.length}</div><div class="l">столов в ${D.halls.length} залах</div></div>
+    <div class="stat"><div class="v num">${seats}</div><div class="l">посадочных мест</div></div>
+    <div class="stat ${inSquads&&seated>=inSquads?"ok":unseated.length?"bad":""}"><div class="v num">${seated}/${inSquads}</div><div class="l">детей рассажено</div></div>
+    <div class="stat"><div class="v num">${seats-seated}</div><div class="l">свободных мест</div></div>
+  </div>
+  <div class="panel"><div class="row" style="justify-content:space-between"><h2>Столовая</h2>
+    <div class="row"><button class="btn sm primary" data-act="dAuto">Рассадить автоматически</button><button class="btn sm" data-act="dExport">Скачать рассадку</button><button class="btn sm danger" data-act="dClear">Очистить рассадку</button></div></div>
+    <p class="help">Каждый отряд получает столы подряд, по возможности в одном зале; соседи по комнате сидят за одним столом. Чтобы отдать стол конкретному отряду, выберите отряд в карточке стола: такой стол закрепляется. Детей можно перетаскивать между столами. После нового распределения по отрядам нажмите «Рассадить автоматически» ещё раз.</p></div>`;
+  if(diningReport && diningReport.notes.length) h+=`<div class="status"><b>Что получилось при рассадке</b>${diningReport.notes.map(n=>`<span>• ${esc(n)}</span>`).join("")}</div>`;
+  const key=S.map((s,i)=>{ const ts=T.filter(x=>x.t.squad===s.id); if(!ts.length) return "";
+    const byHall=D.halls.map((hl,hi)=>{ const n=ts.filter(x=>x.hi===hi).map(x=>x.ti+1); return n.length? `${hl.name} ${n.length>1&&n[n.length-1]-n[0]===n.length-1?`${n[0]}–${n[n.length-1]}`:n.join(", ")}` : ""; }).filter(Boolean).join("; ");
+    return `<span style="--sq:${sqColor(i)}"><b>${esc(s.name)}</b> · ${esc(byHall)}</span>`; }).join("");
+  if(key) h+=`<div class="sqkey">${key}</div>`;
+  h+=`<div class="pool" data-drop="dpool"><b>Без места в столовой <span class="num muted">(${unseated.length})</span></b>
+    <div class="beds">${unseated.map(chip).join("")||'<span class="muted">'+(inSquads?"Все дети за столами. Перетащите ребёнка сюда, чтобы убрать его из-за стола.":"Сначала распределите детей по отрядам.")+'</span>'}</div></div>`;
+  h+=D.halls.map((hl,hi)=>{
+    const hs=sum(hl.tables.map(t=>t.seats)), ho=sum(hl.tables.map(t=>at.get(t.id).length));
+    const cards=hl.tables.map((t,ti)=>{
+      const occ=at.get(t.id).sort(seatOrder); const si=squadIdx(t.squad);
+      const mix=new Set(occ.map(k=>k.squad)).size>1 || (si>=0 && occ.some(k=>k.squad!==si));
+      const opts=`<option value="">${si>=0?"отряд: авто":"без отряда"}</option>`+S.map((s,j)=>`<option value="${s.id}" ${t.squad===s.id?"selected":""}>${esc(s.name)}${t.squad===s.id&&t.pinned?" ●":""}</option>`).join("");
+      return `<div class="dtable ${occ.length>t.seats?"bad":mix?"mix":""}" style="--sq:${sqColor(si)}" data-drop="table" data-table="${t.id}">
+        <div class="room-h"><b>Стол ${ti+1}</b><span class="rctl"><button class="ib" data-act="tMinus" data-table="${t.id}" title="Убрать место" aria-label="Убрать место за столом ${ti+1}">−</button><span class="num" title="Занято / мест">${occ.length}/${t.seats}</span><button class="ib" data-act="tPlus" data-table="${t.id}" title="Добавить место" aria-label="Добавить место за столом ${ti+1}">+</button><button class="ib del" data-act="tDel" data-table="${t.id}" title="Удалить стол" aria-label="Удалить стол ${ti+1}">×</button></span></div>
+        <select id="tsq-${t.id}" data-tsq="${t.id}" aria-label="Отряд за столом ${ti+1}">${opts}</select>
+        <div class="beds">${occ.map(chip).join("")}${'<span class="bed-empty" title="Свободное место"></span>'.repeat(Math.max(0,t.seats-occ.length))}</div></div>`;
+    }).join("");
+    return `<section class="panel"><div class="hall-h"><h2>${esc(hl.name)}</h2><span class="muted num">${hl.tables.length} столов · ${hs} мест · занято ${ho}</span></div>
+      <div class="tables">${cards}</div>
+      <button class="add-room" data-act="tAdd" data-hall="${hi}">+ Добавить стол на ${hl.tables.length?hl.tables[hl.tables.length-1].seats:6} мест</button></section>`;
+  }).join("");
+  return h;
+}
 function renderHelp(){
   return `<div class="panel"><h2>Как пользоваться</h2><div class="help" style="display:grid;gap:8px;color:var(--ink)">
   <p><b>1. Загрузите списки.</b> «Загрузить Excel» принимает .xlsx и .xls (в том числе выгрузки с сайта), можно несколько файлов сразу. Отметьте нужные листы. Повторы (то же ФИО и дата рождения) пропускаются. Строки «бронь» и пустые путёвки (есть номер и район, нет ФИО) становятся местами без имени.</p>
@@ -658,7 +758,8 @@ function renderHelp(){
   <p><b>4. Нажмите «Распределить автоматически».</b> Дети идут по возрасту от старших к младшим, группы по пожеланиям держатся вместе, комнаты получаются только для мальчиков или только для девочек. Родные братья или сестры одного пола в одном отряде по возможности селятся в одну комнату.</p>
   <p><b>5. Поправьте вручную.</b> Перетащите ребёнка в другую комнату или нажмите на него и выберите отряд и комнату. Переставленный вручную ребёнок закрепляется (●): при повторном автораспределении он останется на месте. Бронь и пустые путёвки удобно заранее закрепить в нужном отряде.</p>
   <p><b>Комнаты прямо на доске.</b> У каждой комнаты есть кнопки <span class="kbd">−</span> и <span class="kbd">+</span> (убрать или добавить место) и <span class="kbd">×</span> (удалить комнату: её дети переходят в «Без комнаты» этого отряда). Внизу отряда есть кнопка «Добавить комнату», в шапке отряда настраивается, сколько мест оставить свободными. После изменений нажмите «Распределить автоматически» или поправьте детей вручную.</p>
-  <p><b>6. Скачайте Excel.</b> Получится файл со сводкой и отдельным листом на каждый отряд в классическом формате: №, ФИО, дата рождения, родитель, телефон, адрес, район, комментарии, категория, комната.</p>
+  <p><b>Столовая.</b> Три зала: Основной (30 столов), Кемптон (28) и Веранда (16), за каждым столом 6 мест. «Рассадить автоматически» даёт каждому отряду столы подряд, по возможности в одном зале, соседи по комнате сидят вместе. В карточке стола можно выбрать отряд (стол закрепится за ним), кнопками <span class="kbd">−</span> <span class="kbd">+</span> <span class="kbd">×</span> поменять число мест или удалить стол, внизу зала добавить стол. Детей можно перетаскивать между столами. «Скачать рассадку» сохраняет Excel с листом на каждый зал.</p>
+  <p><b>6. Скачайте Excel.</b> Получится файл со сводкой и отдельным листом на каждый отряд в классическом формате: №, ФИО, дата рождения, родитель, телефон, адрес, район, комментарии, категория, комната. Если дети уже рассажены, добавится лист «Столовая».</p>
   <p><b>Сохранить проект</b> скачивает файл .json со всем состоянием, его можно открыть позже на любом компьютере. Кроме того, работа автоматически сохраняется в этом браузере.</p>
   <p class="muted">Данные детей обрабатываются только в вашем браузере и никуда не отправляются.</p>
   <div><button class="btn danger sm" data-act="resetAll">Начать заново</button></div></div></div>`;
@@ -738,8 +839,26 @@ async function exportXlsx(){
   });
   const un=state.kids.filter(k=>k.squad===null);
   if(un.length){ const rows=[HEAD]; un.forEach((k,n)=>rows.push(kidRow(k,n+1,""))); XLSX.utils.book_append_sheet(wb, sheetFromRows(rows), safeSheetName("Не распределены",used)); }
+  if(state.kids.some(k=>k.table)) XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows(ensureDining().halls),DINING_COLW), safeSheetName("Столовая",used));
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   await saveFile(`${state.name||"Распределение"}.xlsx`.replace(/[\\\/:*?"<>|]/g," "), new Uint8Array(out));
+}
+const DINING_COLW=[90,45,110,45,60,330];
+function diningRows(halls){
+  const at=kidsAtTables(); const rows=[["Зал","Стол","Отряд","Мест","Занято","Дети"]];
+  halls.forEach(h=>h.tables.forEach((t,ti)=>{
+    const occ=at.get(t.id).sort(seatOrder); const s=state.squads.find(s=>s.id===t.squad);
+    const sqName= s? s.name : [...new Set(occ.map(k=>(state.squads[k.squad]||{}).name).filter(Boolean))].join(", ");
+    rows.push([h.name, ti+1, sqName, t.seats, occ.length, occ.map(k=>k.placeholder?(k.fio||"Место"):k.fio).join("\n")]);
+  }));
+  return rows;
+}
+async function exportDining(){
+  if(typeof XLSX==="undefined"){ toast("Библиотека Excel не загрузилась, обновите страницу"); return; }
+  const wb=XLSX.utils.book_new(); const used=new Set();
+  ensureDining().halls.forEach(h=>XLSX.utils.book_append_sheet(wb, sheetFromRows(diningRows([h]),DINING_COLW), safeSheetName(h.name,used)));
+  const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  await saveFile(`${state.name||"Смена"} — столовая.xlsx`.replace(/[\\\/:*?"<>|]/g," "), new Uint8Array(out));
 }
 async function saveProject(){ await saveFile(`${state.name||"Проект"}.json`.replace(/[\\\/:*?"<>|]/g," "), JSON.stringify(state)); }
 
@@ -788,6 +907,15 @@ document.addEventListener("click",e=>{
   if(a==="preset10Yes"){ preset10(); save(); closeModal(); render(); return; }
   if(a==="sqDel"){ const i=+el.dataset.i; state.squads.splice(i,1); state.kids.forEach(k=>{ if(k.squad===i){k.squad=null;k.room=null;k.locked=false;} else if(k.squad!==null&&k.squad>i) k.squad--; }); save(); render(); return; }
   if(a==="sqUp"||a==="sqDown"){ const i=+el.dataset.i, j=a==="sqUp"?i-1:i+1; if(j<0||j>=state.squads.length) return; [state.squads[i],state.squads[j]]=[state.squads[j],state.squads[i]]; state.kids.forEach(k=>{ if(k.squad===i) k.squad=j; else if(k.squad===j) k.squad=i; }); save(); render(); return; }
+  if(a==="dAuto"){ autoSeat(); return; }
+  if(a==="dExport"){ exportDining(); return; }
+  if(a==="dClear"){ showModal(`<h2>Очистить рассадку?</h2><p class="help">Все дети встанут из-за столов, закрепление столов за отрядами снимется. Залы и столы останутся.</p><div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="close">Отмена</button><button class="btn danger" data-act="dClearYes">Очистить</button></div>`); return; }
+  if(a==="dClearYes"){ state.kids.forEach(k=>{ k.table=null; k.tableLocked=false; }); allTables().forEach(({t})=>{ t.squad=null; t.pinned=false; }); diningReport=null; save(); closeModal(); render(); return; }
+  if(a==="tPlus"||a==="tMinus"){ const x=allTables().find(x=>x.t.id===el.dataset.table); if(!x) return; x.t.seats=Math.max(1,Math.min(30,x.t.seats+(a==="tPlus"?1:-1))); save(); render(); return; }
+  if(a==="tAdd"){ const hl=state.dining.halls[+el.dataset.hall]; hl.tables.push({id:uid(),seats:hl.tables.length?hl.tables[hl.tables.length-1].seats:6,squad:null,pinned:false}); save(); render(); toast(`${hl.name}: добавлен стол ${hl.tables.length}`); return; }
+  if(a==="tDel"){ const x=allTables().find(x=>x.t.id===el.dataset.table); if(!x) return; let moved=0;
+    state.kids.forEach(k=>{ if(k.table===x.t.id){ k.table=null; k.tableLocked=false; moved++; } });
+    x.h.tables.splice(x.ti,1); save(); render(); toast(moved?`Стол удалён. ${moved} чел. перенесены в «Без места в столовой»`:"Стол удалён"); return; }
   if(a==="wDel"){ state.wishes.splice(+el.dataset.i,1); save(); render(); return; }
   if(a==="wAdd"){ const find=v=>{ const n=norm(v.split(" · ")[0]); const d=(v.split(" · ")[1]||""); return state.kids.find(k=>norm(k.fio)===n && (!d||fmtDate(k.dob)===d)); };
     const ka=find(document.getElementById("nwA").value), kb=find(document.getElementById("nwB").value);
@@ -821,6 +949,7 @@ document.addEventListener("change",e=>{
     else if(t.dataset.sf==="free") s.free=Math.max(0,parseInt(t.value,10)||0);
     else s.name=t.value||s.name;
     save(); render(); return; }
+  if(t.dataset.tsq){ const x=allTables().find(x=>x.t.id===t.dataset.tsq); if(!x) return; x.t.squad=t.value||null; x.t.pinned=!!t.value; save(); render(); return; }
   if(t.id==="setName"){ state.name=t.value||"Смена"; save(); render(); }
   if(t.id==="setRef"){ state.refDate=t.value||todayIso(); save(); render(); }
   if(t.id==="setOrder"){ state.order=t.value; save(); render(); }
@@ -830,13 +959,16 @@ document.addEventListener("dragstart",e=>{ const c=e.target.closest&&e.target.cl
 document.addEventListener("dragover",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); document.querySelectorAll(".drop").forEach(x=>x!==z&&x.classList.remove("drop")); z.classList.add("drop"); });
 document.addEventListener("dragleave",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(z && !z.contains(e.relatedTarget)) z.classList.remove("drop"); });
 document.addEventListener("drop",e=>{ const z=e.target.closest&&e.target.closest("[data-drop]"); if(!z) return; e.preventDefault(); const k=kidById(e.dataTransfer.getData("text/plain")); if(!k) return;
-  if(z.dataset.drop==="pool"){ k.squad=null; k.room=null; k.locked=false; }
+  if(z.dataset.drop==="table"){ k.table=z.dataset.table; k.tableLocked=true; }
+  else if(z.dataset.drop==="dpool"){ k.table=null; k.tableLocked=false; }
+  else if(z.dataset.drop==="pool"){ k.squad=null; k.room=null; k.locked=false; }
   else { k.squad=+z.dataset.sq; k.room=z.dataset.room===""?null:+z.dataset.room; k.locked=true; }
   save(); render(); });
 
 /* ============ boot ============ */
 state = load() || exampleState();
-try{ const t=localStorage.getItem(LS_KEY+":tab"); if(t && ["board","kids","squads","wishes","help"].includes(t)) tab=t; }catch(_){}
+ensureDining();
+try{ const t=localStorage.getItem(LS_KEY+":tab"); if(t && ["board","kids","squads","wishes","dining","help"].includes(t)) tab=t; }catch(_){}
 if(state.example && !state.kids.some(k=>k.squad!==null)){ autoAllocate(true); }
 render();
 </script>
